@@ -24,19 +24,27 @@ def parse_siscac_report(pdf_source) -> list[dict]:
         pdf_source: Caminho do arquivo (str/Path), bytes ou BytesIO.
 
     Cada item do resultado é um dicionário com as chaves:
-        siscac_pg    – número do pagamento (ex: 2024PG00123)
-        credor       – nome do credor conforme consta no relatório
-        nota_empenho – número da nota de empenho (ex: 2024NE00456)
-        valor_total  – valor total em Decimal
-        comprovante  – número do comprovante bancário ou None
+        siscac_pg          – número do pagamento (ex: 2024PG00123)
+        credor             – nome do credor conforme consta no relatório
+        valor_total        – valor total em Decimal
+        data_contabilizado – data de contabilização (campo "Data", não "Pago")
+        comprovante        – número do comprovante bancário ou None
     """
+    # Linha principal de pagamento: PG  Credor  NE  … valor
     pattern_payment = re.compile(
-        r'^(20\d{2}PG\d{5})\s+(.*?)\s+(20\d{2}NE\d{5}).*?([\d.,]+)$'
+        r'^(20\d{2}PG\d{5})\s+(.*?)\s+20\d{2}NE\d{5}.*?([\d.,]+)$'
+    )
+    # Data de contabilização: linha com rótulo "Data" (não "Pago")
+    # Ex: "Data: 01/01/2024" ou "Nº Lançamento ... Data 01/01/2024"
+    pattern_data = re.compile(
+        r'\bdata\b[:\s]*([\d]{2}/[\d]{2}/[\d]{4})',
+        re.IGNORECASE,
     )
     pattern_comprovante = re.compile(r'N[oº°]\s*do\s*Comprovante[:\s]*([\d.\-]+)', re.IGNORECASE)
 
     payments: dict[str, dict] = {}
     current_comprovante: str | None = None
+    current_data: str | None = None
 
     if isinstance(pdf_source, bytes):
         pdf_source = io.BytesIO(pdf_source)
@@ -49,12 +57,17 @@ def parse_siscac_report(pdf_source) -> list[dict]:
             if m_comp:
                 current_comprovante = m_comp.group(1).replace('.', '')
 
+            # Capture "Data:" date; the regex anchors on the "data" keyword so
+            # a "Pago" date on the same line is not captured.
+            m_data = pattern_data.search(line)
+            if m_data:
+                current_data = m_data.group(1)
+
             m_pay = pattern_payment.match(line)
             if m_pay:
                 pg = m_pay.group(1)
                 credor = m_pay.group(2).strip()
-                nota_empenho = m_pay.group(3)
-                valor_str = m_pay.group(4)
+                valor_str = m_pay.group(3)
                 valor_decimal = Decimal(valor_str.replace('.', '').replace(',', '.'))
 
                 if pg in payments:
@@ -63,8 +76,8 @@ def parse_siscac_report(pdf_source) -> list[dict]:
                     payments[pg] = {
                         'siscac_pg': pg,
                         'credor': credor,
-                        'nota_empenho': nota_empenho,
                         'valor_total': valor_decimal,
+                        'data_contabilizado': current_data,
                         'comprovante': current_comprovante,
                     }
 
@@ -76,10 +89,10 @@ def parse_siscac_report(pdf_source) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 FIELDNAMES = [
-    'siscac_pg',
     'credor',
-    'nota_empenho',
+    'siscac_pg',
     'valor_total',
+    'data_contabilizado',
     'comprovante',
 ]
 

@@ -32,7 +32,7 @@ python main.py siscac --input relatorio_siscac.pdf --output pagamentos.csv
 ```
 
 O CSV gerado contém as colunas:
-`siscac_pg`, `credor`, `nota_empenho`, `valor_total`, `comprovante`
+`credor`, `siscac_pg`, `valor_total`, `data_contabilizado`, `comprovante`
 
 ### 2. Geração de lotes XML EFD-Reinf
 

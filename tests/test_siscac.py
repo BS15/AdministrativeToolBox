@@ -30,12 +30,14 @@ def _make_fake_reader(pages_text: list[str]):
 SAMPLE_PAGE = """\
 Relatório de Pagamentos SISCAC
 Nº do Comprovante: 2024.00001
+Nº Lançamento Data 15/03/2024 Pago 20/03/2024
 2024PG00001 EMPRESA ALFA LTDA 2024NE00100 OUTROS DADOS 10.500,00
 2024PG00002 EMPRESA BETA S/A 2024NE00200 OUTROS DADOS 3.200,50
 """
 
 SAMPLE_PAGE_MULTI = """\
 Nº do Comprovante: 2024.00002
+Nº Lançamento Data 10/04/2024 Pago 15/04/2024
 2024PG00003 EMPRESA GAMA EIRELI 2024NE00300 OUTROS DADOS 1.000,00
 2024PG00003 EMPRESA GAMA EIRELI 2024NE00300 OUTROS DADOS 500,00
 """
@@ -58,8 +60,9 @@ def test_parse_siscac_report_basic(mock_reader_class):
 
     alfa = next(r for r in result if r['siscac_pg'] == '2024PG00001')
     assert alfa['credor'] == 'EMPRESA ALFA LTDA'
-    assert alfa['nota_empenho'] == '2024NE00100'
+    assert 'nota_empenho' not in alfa
     assert alfa['valor_total'] == Decimal('10500.00')
+    assert alfa['data_contabilizado'] == '15/03/2024'
     assert alfa['comprovante'] == '202400001'
 
 
@@ -99,8 +102,8 @@ def test_payments_to_csv_creates_file(tmp_path):
         {
             'siscac_pg': '2024PG00001',
             'credor': 'EMPRESA ALFA LTDA',
-            'nota_empenho': '2024NE00100',
             'valor_total': Decimal('10500.00'),
+            'data_contabilizado': '15/03/2024',
             'comprovante': '202400001',
         }
     ]
@@ -113,6 +116,7 @@ def test_payments_to_csv_creates_file(tmp_path):
     assert '2024PG00001' in content
     assert 'EMPRESA ALFA LTDA' in content
     assert '10500,00' in content
+    assert '15/03/2024' in content
 
 
 def test_payments_to_csv_header_columns(tmp_path):
@@ -120,7 +124,7 @@ def test_payments_to_csv_header_columns(tmp_path):
     out = tmp_path / 'empty.csv'
     payments_to_csv(payments, out)
     lines = out.read_text(encoding='utf-8-sig').splitlines()
-    assert lines[0] == 'siscac_pg,credor,nota_empenho,valor_total,comprovante'
+    assert lines[0] == 'credor,siscac_pg,valor_total,data_contabilizado,comprovante'
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +136,8 @@ def test_payments_to_csv_string_returns_string():
         {
             'siscac_pg': '2024PG00001',
             'credor': 'EMPRESA ALFA LTDA',
-            'nota_empenho': '2024NE00100',
             'valor_total': Decimal('10500.00'),
+            'data_contabilizado': '15/03/2024',
             'comprovante': '202400001',
         }
     ]
@@ -143,6 +147,7 @@ def test_payments_to_csv_string_returns_string():
     assert result.startswith('\ufeff')  # BOM for Excel
     assert '2024PG00001' in result
     assert '10500,00' in result
+    assert '15/03/2024' in result
 
 
 def test_payments_to_csv_string_empty():
