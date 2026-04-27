@@ -20,6 +20,7 @@ Arquivos necessarios para funcionar offline
 - vendor/js/xlsx.full.min.js
 - vendor/js/jszip.min.js
 - vendor/js/pdf.min.js
+- vendor/js/pdf.worker.min.js
 
 Se abrir app.html e aparecer aviso de biblioteca ausente
 - Verifique se a pasta vendor/js existe na mesma raiz de app.html.
