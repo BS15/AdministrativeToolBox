@@ -1,5 +1,0 @@
-packages = ["pypdf"]
-
-[files]
-"./toolbox/__init__.py" = "toolbox/__init__.py"
-"./toolbox/siscac_payments.py" = "toolbox/siscac_payments.py"

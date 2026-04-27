@@ -1,1 +1,0 @@
-"""AdministrativeToolBox – standalone administrative utilities."""

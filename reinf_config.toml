@@ -1,5 +1,0 @@
-packages = ["openpyxl"]
-
-[files]
-"./toolbox/__init__.py" = "toolbox/__init__.py"
-"./toolbox/efdreinf_xml.py" = "toolbox/efdreinf_xml.py"
