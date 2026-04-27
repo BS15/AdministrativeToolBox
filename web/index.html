@@ -171,9 +171,30 @@
 
         <div id="status">Inicializando PyScript...</div>
         <p class="tip">A primeira carga pode levar alguns segundos.</p>
+        <p id="bootstrap-hint" class="tip hidden">
+          Se esta mensagem nao mudar para "Pronto para uso.", o runtime nao carregou.
+          Abra via HTTP em <strong>http://localhost:8000/web/</strong> (nao use file://)
+          e confirme que as pastas <strong>web/vendor/pyscript</strong>,
+          <strong>web/vendor/pyodide</strong> e <strong>web/vendor/wheels</strong> existem.
+          Alternativa: abra <strong>app.html</strong> para usar a interface 100% JavaScript.
+        </p>
       </div>
     </div>
 
     <script type="py" src="./app.py" config="./pyscript.toml"></script>
+    <script>
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          var statusEl = document.getElementById("status");
+          var hintEl = document.getElementById("bootstrap-hint");
+          if (!statusEl || !hintEl) return;
+          if (statusEl.textContent.indexOf("Inicializando PyScript") !== -1) {
+            statusEl.textContent =
+              "Falha ao inicializar PyScript. Verifique as instrucoes abaixo.";
+            hintEl.classList.remove("hidden");
+          }
+        }, 8000);
+      });
+    </script>
   </body>
 </html>
