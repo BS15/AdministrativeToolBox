@@ -138,6 +138,77 @@ function triggerDownload(filename, blob) {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 }
 
+// Dependencias externas (SheetJS, JSZip e pdf.js) com fallback de caminhos.
+const LIB_FILES = {
+  xlsx: 'xlsx.full.min.js',
+  jszip: 'jszip.min.js',
+  pdf: 'pdf.min.js',
+  pdfWorker: 'pdf.worker.min.js',
+};
+const LIB_BASE_CANDIDATES = ['./vendor/js', 'vendor/js', '../vendor/js', '../../vendor/js'];
+let activeLibBase = './vendor/js';
+
+function getMissingLibraries() {
+  const missing = [];
+  if (typeof XLSX === 'undefined') missing.push('SheetJS (XLSX)');
+  if (typeof JSZip === 'undefined') missing.push('JSZip');
+  if (typeof pdfjsLib === 'undefined') missing.push('pdf.js');
+  return missing;
+}
+
+function setPdfWorker(basePath) {
+  if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `${basePath}/${LIB_FILES.pdfWorker}`;
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    script.onload = () => resolve(src);
+    script.onerror = () => reject(new Error(`Falha ao carregar: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function tryLoadLibrariesFrom(basePath) {
+  const pendingLoads = [];
+
+  if (typeof XLSX === 'undefined') pendingLoads.push(loadScript(`${basePath}/${LIB_FILES.xlsx}`));
+  if (typeof JSZip === 'undefined') pendingLoads.push(loadScript(`${basePath}/${LIB_FILES.jszip}`));
+  if (typeof pdfjsLib === 'undefined') pendingLoads.push(loadScript(`${basePath}/${LIB_FILES.pdf}`));
+
+  if (pendingLoads.length) {
+    await Promise.allSettled(pendingLoads);
+  }
+
+  if (!getMissingLibraries().length) {
+    activeLibBase = basePath;
+    setPdfWorker(basePath);
+    return true;
+  }
+
+  return false;
+}
+
+async function ensureLibrariesLoaded() {
+  if (!getMissingLibraries().length) {
+    setPdfWorker(activeLibBase);
+    return { ok: true, basePath: activeLibBase, attempted: [] };
+  }
+
+  const attempted = [];
+  for (const basePath of LIB_BASE_CANDIDATES) {
+    attempted.push(basePath);
+    const ok = await tryLoadLibrariesFrom(basePath);
+    if (ok) return { ok: true, basePath, attempted };
+  }
+
+  return { ok: false, missing: getMissingLibraries(), attempted };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilitários gerais (portados de efdreinf_xml.py e siscac_payments.py)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -602,9 +673,7 @@ async function parseSiscacPdf(arrayBuffer) {
   }
 
   // Define explicitamente o worker local para evitar resolução incorreta no file://.
-  if (pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/js/pdf.worker.min.js';
-  }
+  setPdfWorker(activeLibBase);
 
   let pdf;
   try {
@@ -706,6 +775,14 @@ async function runSiscac() {
   setStatus('siscac', 'info', 'Processando PDF...');
 
   try {
+    const depCheck = await ensureLibrariesLoaded();
+    if (!depCheck.ok) {
+      throw new Error(
+        'Dependências ausentes: ' + depCheck.missing.join(', ') +
+        '. Caminhos testados: ' + depCheck.attempted.join(', ')
+      );
+    }
+
     const file = fileInput.files[0];
     const buf = await file.arrayBuffer();
     const payments = await parseSiscacPdf(buf);
@@ -759,6 +836,14 @@ async function runReinf() {
   setStatus('reinf','info','Processando planilha...');
 
   try {
+    const depCheck = await ensureLibrariesLoaded();
+    if (!depCheck.ok) {
+      throw new Error(
+        'Dependências ausentes: ' + depCheck.missing.join(', ') +
+        '. Caminhos testados: ' + depCheck.attempted.join(', ')
+      );
+    }
+
     const file = fileInput.files[0];
     const buf = await file.arrayBuffer();
     const xmls = gerarXmlsReinf(buf, file.name, cnpj, razao, mes, ano);
@@ -787,18 +872,13 @@ async function runReinf() {
 }
 
 // Aviso se bibliotecas locais não carregarem
-window.addEventListener('load', () => {
-  const missing = [];
-  if (typeof XLSX === 'undefined') missing.push('SheetJS (XLSX)');
-  if (typeof JSZip === 'undefined') missing.push('JSZip');
-  if (typeof pdfjsLib === 'undefined') missing.push('pdf.js');
-  if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/js/pdf.worker.min.js';
-  }
-  if (missing.length) {
+window.addEventListener('load', async () => {
+  const depCheck = await ensureLibrariesLoaded();
+  if (!depCheck.ok) {
     document.body.insertAdjacentHTML('afterbegin',
       `<div style="background:#f8d7da;color:#721c24;padding:1rem 2rem;font-size:.9rem">
-        ⚠ Biblioteca(s) não carregada(s): ${missing.join(', ')}.<br>
+        ⚠ Biblioteca(s) não carregada(s): ${depCheck.missing.join(', ')}.<br>
+        Caminhos testados: ${depCheck.attempted.join(', ')}.<br>
         Verifique se a pasta local ./vendor/js está presente e contém xlsx.full.min.js, jszip.min.js, pdf.min.js e pdf.worker.min.js.
       </div>`);
   }
