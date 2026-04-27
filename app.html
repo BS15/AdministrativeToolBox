@@ -369,9 +369,23 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     valorRetido = parseDecimal(get('retencao_agregada') || get('valor_retido'));
   }
 
+  const cnpjEmitente = digitsOnly(get('cnpj_emitente'));
+  const nomeEmitente = String(get('nome_emitente') || '').trim();
+
+  // Ignora linhas de rodape/ruido sem dados essenciais.
+  if (!cnpjEmitente && !nomeEmitente && !natureza && valorBruto <= 0 && baseCalculo <= 0 && valorRetido <= 0) {
+    return null;
+  }
+
+  // Linhas com codigo '-' representam itens sem retencao (somente controle interno).
+  if (valorRetido <= 0 && codigoImposto === '-') {
+    return null;
+  }
+
   return {
-    cnpj_emitente:       digitsOnly(get('cnpj_emitente')),
-    nome_emitente:       String(get('nome_emitente') || '').trim(),
+    _source_row:         rowNum,
+    cnpj_emitente:       cnpjEmitente,
+    nome_emitente:       nomeEmitente,
     numero_nf:           numeroNf,
     serie_nf:            String(get('serie_nf') || '').trim(),
     data_emissao:        parseDate(get('data_emissao')),
@@ -480,7 +494,7 @@ function readControlSheet(arrayBuffer, filename) {
 function validateRecords(records) {
   const issues = [];
   records.forEach((rec, i) => {
-    const row = i + 2;
+    const row = rec._source_row || (i + 2);
     if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
     if (rec.serie_reinf === 'S4000' && !naturezaValida(rec.natureza_rendimento))
       issues.push(`Linha ${row}: Natureza Rendimento inválida (${rec.natureza_rendimento}) para S4000.`);
