@@ -27,7 +27,7 @@ import re
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -100,7 +100,6 @@ def _parse_date(value) -> date | None:
     s = str(value).strip()
     for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
         try:
-            from datetime import datetime
             return datetime.strptime(s, fmt).date()
         except ValueError:
             continue
@@ -236,13 +235,13 @@ def _build_r2010_xml(cnpj_contribuinte: str, cnpj_prestador: str, records: list[
     # Group by NF so each NF gets one <nfSeq> block
     nf_groups: dict[tuple, list[dict]] = defaultdict(list)
     for rec in records:
-        key = (rec['numero_nf'], str(rec['data_emissao']), str(rec['valor_bruto']))
+        key = (rec['numero_nf'], rec['data_emissao'], rec['valor_bruto'])
         nf_groups[key].append(rec)
 
     for (numero_nf, data_emissao, valor_bruto), nf_records in nf_groups.items():
         nf_seq = ET.SubElement(det_evt, 'nfSeq')
         ET.SubElement(nf_seq, 'nrNF').text = numero_nf
-        ET.SubElement(nf_seq, 'dtEmiNF').text = data_emissao
+        ET.SubElement(nf_seq, 'dtEmiNF').text = str(data_emissao)
         ET.SubElement(nf_seq, 'vrBruto').text = _fmt_dec(nf_records[0]['valor_bruto'])
 
         det_ret = ET.SubElement(nf_seq, 'detRet')
