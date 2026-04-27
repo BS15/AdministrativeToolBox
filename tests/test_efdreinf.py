@@ -1,5 +1,6 @@
 """Testes unitários para toolbox.efdreinf_xml."""
 
+import csv
 import xml.etree.ElementTree as ET
 from datetime import date
 from decimal import Decimal
@@ -43,6 +44,26 @@ def _make_sample_xlsx(tmp_path: Path, rows: list[dict]) -> Path:
         ws.append([row.get(h) for h in headers])
     path = tmp_path / 'controle.xlsx'
     wb.save(path)
+    return path
+
+
+def _make_sample_csv_schema(tmp_path: Path, rows: list[dict]) -> Path:
+    headers = [
+        'CNPJ',
+        'Abreviatura',
+        'Data pagto',
+        'Natureza rendimento (cód. Ecac)',
+        'Cód. Receita (siscac)',
+        'Valor tributável',
+        'Retenção agregada',
+        'Retenção individual',
+    ]
+    path = tmp_path / 'controle.csv'
+    with path.open('w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
     return path
 
 
@@ -129,6 +150,35 @@ def test_read_control_sheet_skips_invalid_serie(tmp_path):
     xlsx = _make_sample_xlsx(tmp_path, [bad_row])
     records = read_control_sheet(xlsx)
     assert records == []
+
+
+def test_read_control_sheet_accepts_csv_schema(tmp_path):
+    csv_path = _make_sample_csv_schema(
+        tmp_path,
+        [
+            {
+                'CNPJ': '98.765.432/0001-00',
+                'Abreviatura': 'Prestador Federal',
+                'Data pagto': '05/06/2024',
+                'Natureza rendimento (cód. Ecac)': '15001',
+                'Cód. Receita (siscac)': '1708',
+                'Valor tributável': '10000,00',
+                'Retenção agregada': '1500,00',
+                'Retenção individual': '1500,00',
+            }
+        ],
+    )
+
+    records = read_control_sheet(csv_path)
+
+    assert len(records) == 1
+    rec = records[0]
+    assert rec['cnpj_emitente'] == '98765432000100'
+    assert rec['nome_emitente'] == 'Prestador Federal'
+    assert rec['serie_reinf'] == 'S4000'
+    assert rec['natureza_rendimento'] == '15001'
+    assert rec['base_calculo'] == Decimal('10000.00')
+    assert rec['valor_retido'] == Decimal('1500.00')
 
 
 # ---------------------------------------------------------------------------

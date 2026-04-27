@@ -12,6 +12,7 @@ env/
 *.egg-info/
 dist/
 build/
+dist_nuitka/
 
 # IDE
 .vscode/
@@ -25,6 +26,9 @@ Thumbs.db
 *.csv
 output/
 saida/
+
+# Offline vendor artifacts (very large binaries/wheels)
+web/vendor/pyodide/
 
 # Secrets / env files
 .env

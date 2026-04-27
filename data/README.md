@@ -1,6 +1,6 @@
-# Planilha de Controle EFD-Reinf – Formato Esperado
+# Planilha/CSV de Controle EFD-Reinf – Formato Esperado
 
-Coloque seu arquivo `.xlsx` aqui para usar com o comando `reinf`.
+Coloque seu arquivo `.xlsx` ou `.csv` aqui para usar com o comando `reinf`.
 
 ## Colunas obrigatórias
 
@@ -22,3 +22,22 @@ Coloque seu arquivo `.xlsx` aqui para usar com o comando `reinf`.
 | Tipo Beneficiário     | `PF` ou `PJ`                                               |
 
 Linhas onde a coluna **Série Reinf** não for `S2000` ou `S4000` são ignoradas.
+
+## Schema CSV suportado
+
+O gerador também aceita CSV com as colunas:
+
+| Coluna                               | Mapeamento interno |
+|--------------------------------------|--------------------|
+| CNPJ                                 | CNPJ Emitente |
+| Abreviatura                          | Nome Emitente |
+| Data pagto                           | Data Emissão |
+| Natureza rendimento (cód. Ecac)      | Natureza Rendimento |
+| Cód. Receita (siscac)                | Código Imposto |
+| Valor tributável                     | Base de Cálculo / Valor Bruto |
+| Retenção agregada                    | Valor Retido (fallback) |
+| Retenção individual                  | Valor Retido |
+
+Quando o CSV não possui a coluna `Série Reinf`, a série é inferida:
+- `S4000` se a Natureza de Rendimento for um código válido de 5 dígitos.
+- `S2000` nos demais casos.

@@ -1,0 +1,25 @@
+AdministrativeToolBox - Execucao Standalone no Navegador
+
+Este projeto pode rodar sem instalacao e sem terminal.
+
+Como abrir
+1. Abra a pasta do projeto.
+2. Clique duas vezes em app.html.
+3. O navegador abrira a interface com duas funcoes:
+   - SISCAC -> CSV
+   - EFD-Reinf -> ZIP de XMLs
+
+Nao precisa
+- Nao precisa instalar Python.
+- Nao precisa instalar dependencias.
+- Nao precisa executar comando em terminal/prompt.
+- Nao precisa servidor local.
+
+Arquivos necessarios para funcionar offline
+- app.html
+- vendor/js/xlsx.full.min.js
+- vendor/js/jszip.min.js
+- vendor/js/pdf.min.js
+
+Se abrir app.html e aparecer aviso de biblioteca ausente
+- Verifique se a pasta vendor/js existe na mesma raiz de app.html.

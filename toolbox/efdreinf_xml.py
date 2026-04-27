@@ -24,7 +24,9 @@ Formato esperado da planilha de controle (Excel .xlsx):
 """
 
 import io
+import csv
 import re
+import unicodedata
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -63,34 +65,170 @@ def _prettify(root: ET.Element) -> str:
 
 # Mapeamento flexível: aceita variações de nome de coluna
 _COL_ALIASES: dict[str, list[str]] = {
-    'cnpj_emitente':      ['cnpj emitente', 'cnpj_emitente', 'cnpj prestador', 'cnpj do prestador'],
-    'nome_emitente':      ['nome emitente', 'nome_emitente', 'razão social', 'razao social', 'prestador'],
+    'cnpj_emitente':      ['cnpj emitente', 'cnpj_emitente', 'cnpj prestador', 'cnpj do prestador', 'cnpj'],
+    'nome_emitente':      ['nome emitente', 'nome_emitente', 'razão social', 'razao social', 'prestador',
+                           'abreviatura'],
     'numero_nf':          ['número nf', 'numero nf', 'numero_nf', 'nf', 'número da nf', 'nota fiscal'],
     'serie_nf':           ['série nf', 'serie nf', 'serie_nf', 'série da nf'],
-    'data_emissao':       ['data emissão', 'data emissao', 'data_emissao', 'emissão', 'emissao'],
-    'valor_bruto':        ['valor bruto', 'valor_bruto', 'vr bruto', 'bruto'],
-    'codigo_imposto':     ['código imposto', 'codigo imposto', 'codigo_imposto', 'código de receita', 'código'],
+    'data_emissao':       ['data emissão', 'data emissao', 'data_emissao', 'emissão', 'emissao', 'data pagto'],
+    'valor_bruto':        ['valor bruto', 'valor_bruto', 'vr bruto', 'bruto', 'valor tributável',
+                           'valor tributavel'],
+    'codigo_imposto':     ['código imposto', 'codigo imposto', 'codigo_imposto', 'código de receita', 'código',
+                           'cod. receita (siscac)', 'cod receita (siscac)', 'cod receita', 'cód. receita (siscac)'],
     'serie_reinf':        ['série reinf', 'serie reinf', 'serie_reinf', 'série reinf'],
-    'natureza_rendimento':['natureza rendimento', 'natureza_rendimento', 'natureza', 'nat rendimento', 'nat. rendimento'],
+    'natureza_rendimento':['natureza rendimento', 'natureza_rendimento', 'natureza', 'nat rendimento', 'nat. rendimento',
+                           'natureza rendimento (cód. ecac)', 'natureza rendimento (cod. ecac)',
+                           'natureza rendimento (cod ecac)', 'natureza rendimento cod ecac'],
     'base_calculo':       ['base de cálculo', 'base de calculo', 'base_calculo', 'rendimento tributável',
-                           'rendimento tributavel', 'base calculo'],
-    'valor_retido':       ['valor retido', 'valor_retido', 'vr retido', 'imposto retido'],
+                           'rendimento tributavel', 'base calculo', 'valor tributável', 'valor tributavel'],
+    'valor_retido':       ['valor retido', 'valor_retido', 'vr retido', 'imposto retido',
+                           'retenção individual', 'retencao individual', 'retenção agregada', 'retencao agregada'],
+    'retencao_agregada':  ['retenção agregada', 'retencao agregada'],
     'cnpj_beneficiario':  ['cnpj beneficiário', 'cnpj beneficiario', 'cnpj_beneficiario', 'cpf/cnpj beneficiário'],
     'nome_beneficiario':  ['nome beneficiário', 'nome beneficiario', 'nome_beneficiario', 'beneficiário', 'beneficiario'],
     'tipo_beneficiario':  ['tipo beneficiário', 'tipo beneficiario', 'tipo_beneficiario', 'pf/pj', 'tipo'],
 }
 
 
+def _normalize_header(value: str | None) -> str:
+    s = str(value or '').strip().lower()
+    s = unicodedata.normalize('NFKD', s)
+    s = ''.join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r'\s+', ' ', s)
+    return s
+
+
 def _resolve_columns(header_row: list[str]) -> dict[str, int]:
     """Mapeia nomes canônicos de coluna para índice na planilha."""
-    normalized = [str(h or '').strip().lower() for h in header_row]
+    normalized = [_normalize_header(h) for h in header_row]
     mapping: dict[str, int] = {}
     for canonical, aliases in _COL_ALIASES.items():
         for alias in aliases:
-            if alias in normalized:
-                mapping[canonical] = normalized.index(alias)
+            alias_norm = _normalize_header(alias)
+            if alias_norm in normalized:
+                mapping[canonical] = normalized.index(alias_norm)
                 break
     return mapping
+
+
+def _infer_serie_reinf(codigo_imposto: str, natureza_rendimento: str) -> str:
+    """Infere a série Reinf quando o input não a informa explicitamente."""
+    if _natureza_rendimento_valida(natureza_rendimento):
+        return 'S4000'
+    # Fallback: sem natureza de rendimento válida, assume INSS (S2000).
+    return 'S2000'
+
+
+def _row_to_record(row, row_number: int, col_map: dict[str, int]) -> dict | None:
+    def _get(key):
+        idx = col_map.get(key)
+        return row[idx] if idx is not None and idx < len(row) else None
+
+    natureza = str(_get('natureza_rendimento') or '').strip()
+    codigo_imposto = str(_get('codigo_imposto') or '').strip()
+    serie_reinf_raw = str(_get('serie_reinf') or '').strip().upper()
+    has_serie_column = 'serie_reinf' in col_map
+
+    if has_serie_column:
+        # Compatibilidade com comportamento anterior: se a coluna existe,
+        # apenas S2000/S4000 são aceitos; demais valores são descartados.
+        if serie_reinf_raw not in ('S2000', 'S4000'):
+            return None
+        serie_reinf = serie_reinf_raw
+    else:
+        # Schema CSV resumido não traz Série Reinf; inferir pela natureza.
+        serie_reinf = _infer_serie_reinf(codigo_imposto, natureza)
+
+    # Em schema de CSV resumido não há NF: gera identificador estável por linha.
+    numero_nf = str(_get('numero_nf') or '').strip() or f'ROW{row_number}'
+
+    valor_bruto = _parse_decimal(_get('valor_bruto') if _get('valor_bruto') is not None else _get('base_calculo'))
+    base_calculo = _parse_decimal(_get('base_calculo') if _get('base_calculo') is not None else _get('valor_bruto'))
+
+    valor_retido = _parse_decimal(_get('valor_retido'))
+    if valor_retido <= 0:
+        # CSV alvo pode trazer apenas retenção agregada.
+        valor_retido = _parse_decimal(_get('retencao_agregada') or _get('valor_retido'))
+
+    return {
+        'cnpj_emitente':       _digits_only(_get('cnpj_emitente')),
+        'nome_emitente':       str(_get('nome_emitente') or '').strip(),
+        'numero_nf':           numero_nf,
+        'serie_nf':            str(_get('serie_nf') or '').strip(),
+        'data_emissao':        _parse_date(_get('data_emissao')),
+        'valor_bruto':         valor_bruto,
+        'codigo_imposto':      codigo_imposto,
+        'serie_reinf':         serie_reinf,
+        'natureza_rendimento': natureza,
+        'base_calculo':        base_calculo,
+        'valor_retido':        valor_retido,
+        'cnpj_beneficiario':   _digits_only(_get('cnpj_beneficiario')),
+        'nome_beneficiario':   str(_get('nome_beneficiario') or '').strip(),
+        'tipo_beneficiario':   str(_get('tipo_beneficiario') or 'PJ').strip().upper(),
+    }
+
+
+def _read_control_xlsx(xlsx_source) -> list[dict]:
+    if isinstance(xlsx_source, bytes):
+        xlsx_source = io.BytesIO(xlsx_source)
+
+    wb = openpyxl.load_workbook(xlsx_source, read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        wb.close()
+        return []
+
+    header = list(rows[0])
+    col_map = _resolve_columns(header)
+
+    records = []
+    for row_number, row in enumerate(rows[1:], start=2):
+        rec = _row_to_record(row, row_number, col_map)
+        if rec is not None:
+            records.append(rec)
+
+    wb.close()
+    return records
+
+
+def _read_control_csv(csv_source) -> list[dict]:
+    if isinstance(csv_source, bytes):
+        csv_source = io.StringIO(csv_source.decode('utf-8-sig'))
+    elif isinstance(csv_source, (str, Path)):
+        csv_source = Path(csv_source).read_text(encoding='utf-8-sig')
+        csv_source = io.StringIO(csv_source)
+
+    sample = csv_source.read(2048)
+    csv_source.seek(0)
+
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=',;\t|')
+    except csv.Error:
+        class _Fallback(csv.Dialect):
+            delimiter = ','
+            quotechar = '"'
+            doublequote = True
+            skipinitialspace = True
+            lineterminator = '\n'
+            quoting = csv.QUOTE_MINIMAL
+
+        dialect = _Fallback
+
+    reader = csv.reader(csv_source, dialect=dialect)
+    rows = list(reader)
+    if not rows:
+        return []
+
+    col_map = _resolve_columns(rows[0])
+    records = []
+    for row_number, row in enumerate(rows[1:], start=2):
+        if not any(str(v).strip() for v in row):
+            continue
+        rec = _row_to_record(row, row_number, col_map)
+        if rec is not None:
+            records.append(rec)
+    return records
 
 
 def _parse_date(value) -> date | None:
@@ -125,56 +263,25 @@ def _parse_decimal(value) -> Decimal:
 
 
 def read_control_sheet(xlsx_source) -> list[dict]:
-    """Lê a planilha de controle e retorna lista de registros normalizados.
+    """Lê planilha/CSV de controle e retorna lista de registros normalizados.
 
     Args:
-        xlsx_source: Caminho do arquivo .xlsx (str/Path), bytes ou BytesIO.
+        xlsx_source: Caminho do arquivo `.xlsx` ou `.csv` (str/Path), bytes ou BytesIO.
 
     Returns:
         Lista de dicionários com chaves canônicas conforme _COL_ALIASES.
     """
+    if isinstance(xlsx_source, (str, Path)) and Path(xlsx_source).suffix.lower() == '.csv':
+        return _read_control_csv(xlsx_source)
+
     if isinstance(xlsx_source, bytes):
-        xlsx_source = io.BytesIO(xlsx_source)
-    wb = openpyxl.load_workbook(xlsx_source, read_only=True, data_only=True)
-    ws = wb.active
+        # Tenta interpretar como CSV textual antes de assumir XLSX binário.
+        try:
+            return _read_control_csv(xlsx_source)
+        except Exception:
+            pass
 
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        return []
-
-    header = list(rows[0])
-    col_map = _resolve_columns(header)
-
-    def _get(row, key):
-        idx = col_map.get(key)
-        return row[idx] if idx is not None and idx < len(row) else None
-
-    records = []
-    for row in rows[1:]:
-        serie_reinf = str(_get(row, 'serie_reinf') or '').strip().upper()
-        if serie_reinf not in ('S2000', 'S4000'):
-            continue
-
-        record = {
-            'cnpj_emitente':       _digits_only(_get(row, 'cnpj_emitente')),
-            'nome_emitente':       str(_get(row, 'nome_emitente') or '').strip(),
-            'numero_nf':           str(_get(row, 'numero_nf') or '').strip(),
-            'serie_nf':            str(_get(row, 'serie_nf') or '').strip(),
-            'data_emissao':        _parse_date(_get(row, 'data_emissao')),
-            'valor_bruto':         _parse_decimal(_get(row, 'valor_bruto')),
-            'codigo_imposto':      str(_get(row, 'codigo_imposto') or '').strip(),
-            'serie_reinf':         serie_reinf,
-            'natureza_rendimento': str(_get(row, 'natureza_rendimento') or '').strip(),
-            'base_calculo':        _parse_decimal(_get(row, 'base_calculo')),
-            'valor_retido':        _parse_decimal(_get(row, 'valor_retido')),
-            'cnpj_beneficiario':   _digits_only(_get(row, 'cnpj_beneficiario')),
-            'nome_beneficiario':   str(_get(row, 'nome_beneficiario') or '').strip(),
-            'tipo_beneficiario':   str(_get(row, 'tipo_beneficiario') or 'PJ').strip().upper(),
-        }
-        records.append(record)
-
-    wb.close()
-    return records
+    return _read_control_xlsx(xlsx_source)
 
 
 # ---------------------------------------------------------------------------

@@ -1,29 +1,55 @@
 # AdministrativeToolBox
 
-Utilitários administrativos standalone em Python, inspirados em BS15/djangoproject.
-Sem dependência do Django – basta instalar os pacotes em `requirements.txt`.
+Utilitarios administrativos com modo standalone em HTML + JavaScript.
+Pode ser usado direto no navegador, sem instalacao e sem terminal.
 
 ## Funcionalidades
 
 | Ferramenta | Entrada | Saída |
 |---|---|---|
 | **SISCAC Payments** | Relatório PDF do SISCAC | CSV com lista de pagamentos |
-| **EFD-Reinf XML** | Planilha de controle `.xlsx` | Lotes de arquivos XML EFD-Reinf |
+| **EFD-Reinf XML** | Planilha de controle `.xlsx` ou `.csv` | Lotes de arquivos XML EFD-Reinf |
 
 ---
 
-## Instalação
+## Uso Mais Simples (Sem Instalar Nada)
 
-```bash
-python -m venv .venv
-source .venv/bin/activate      # Linux/macOS
-# .venv\Scripts\activate       # Windows
-pip install -r requirements.txt
-```
+Abra `app.html` no navegador.
+
+Pronto: sem Python, sem dependencias e sem linha de comando.
 
 ---
 
 ## Uso
+
+### Interface no navegador (HTML + JavaScript) - recomendado
+
+Arquivo de entrada:
+- `app.html`
+
+Dependencias locais ja inclusas no repositorio:
+- `vendor/js/xlsx.full.min.js`
+- `vendor/js/jszip.min.js`
+- `vendor/js/pdf.min.js`
+
+Esse fluxo foi feito para rodar diretamente por `file://` ao abrir o HTML.
+
+### Interface no navegador (PyScript) - alternativa legada
+
+A pasta `web/` foi mantida para compatibilidade historica.
+Para uso final sem instalacao e sem terminal, prefira sempre `app.html`.
+
+### Interface gráfica simples (desktop)
+
+Execute a interface para escolher a funcionalidade, selecionar arquivos de entrada e gerar saídas:
+
+```bash
+python desktop_app.py
+```
+
+Fluxos disponíveis na interface:
+- **SISCAC -> CSV**: seleciona PDF e caminho do CSV de saída.
+- **EFD-Reinf -> ZIP**: seleciona XLSX/CSV, informa CNPJ/razão social/mês/ano e gera um ZIP com todos os XMLs.
 
 ### 1. Lista de Pagamentos (CSV) a partir do relatório SISCAC
 
@@ -60,6 +86,10 @@ saida/
 
 Veja `data/README.md` para o formato esperado da planilha de controle.
 
+Também é aceito CSV com o schema:
+`CNPJ`, `Abreviatura`, `Data pagto`, `Natureza rendimento (cód. Ecac)`,
+`Cód. Receita (siscac)`, `Valor tributável`, `Retenção agregada`, `Retenção individual`.
+
 ---
 
 ## Testes
@@ -68,6 +98,50 @@ Veja `data/README.md` para o formato esperado da planilha de controle.
 pip install pytest
 pytest tests/
 ```
+
+---
+
+## Deploy e distribuição para usuários finais
+
+### Distribuição browser-first (sem EXE)
+
+Distribua o projeto com o arquivo `app.html` e a pasta `vendor/js/`.
+O usuario final so precisa abrir `app.html` no navegador.
+
+### Opção A: rodar como aplicação Python
+
+1. Instale Python 3.11+ no computador do usuário.
+2. Instale dependências:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Inicie a aplicação:
+
+```bash
+python desktop_app.py
+```
+
+### Opção B: gerar executável (PyInstaller)
+
+Essa opção gera um arquivo executável para distribuição.
+
+1. Instale PyInstaller no ambiente de build:
+
+```bash
+pip install pyinstaller
+```
+
+2. Gere o executável:
+
+```bash
+pyinstaller --onefile --noconsole --name AdministrativeToolBox desktop_app.py
+```
+
+3. Distribua o arquivo em `dist/AdministrativeToolBox` (ou `AdministrativeToolBox.exe` no Windows).
+
+> Recomenda-se gerar o executável no mesmo sistema operacional de destino (Windows para Windows, Linux para Linux, etc.).
 
 ---
 
@@ -83,6 +157,7 @@ AdministrativeToolBox/
 ├── tests/
 │   ├── test_siscac.py
 │   └── test_efdreinf.py
+├── desktop_app.py           # Interface desktop (Tkinter)
 ├── main.py                  # CLI (argparse)
 ├── requirements.txt
 └── README.md

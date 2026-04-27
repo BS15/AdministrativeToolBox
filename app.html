@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AdministrativeToolBox</title>
+    <!-- Dependências locais para rodar offline e sem instalação -->
+    <script src="./vendor/js/xlsx.full.min.js"></script>
+    <script src="./vendor/js/jszip.min.js"></script>
+    <script src="./vendor/js/pdf.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #1a1a1a; }
+    header { background: #003366; color: #fff; padding: 1rem 2rem; }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+    header p  { font-size: 0.8rem; opacity: 0.75; margin-top: 0.2rem; }
+    .tabs { display: flex; gap: 0; background: #002244; padding: 0 2rem; }
+    .tab-btn {
+      padding: 0.6rem 1.4rem;
+      border: none; background: transparent; color: #aac4e0;
+      cursor: pointer; font-size: 0.9rem; border-bottom: 3px solid transparent;
+    }
+    .tab-btn.active { color: #fff; border-bottom-color: #4db6ff; }
+    .panel { display: none; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    .panel.active { display: block; }
+    .card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,.1); margin-bottom: 1rem; }
+    .card h2 { font-size: 1rem; margin-bottom: 1rem; color: #003366; }
+    label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; margin-top: 0.75rem; }
+    label:first-child { margin-top: 0; }
+    input[type="text"], input[type="number"], input[type="file"] {
+      width: 100%; padding: 0.45rem 0.6rem; border: 1px solid #ccc;
+      border-radius: 4px; font-size: 0.9rem;
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    button.run-btn {
+      margin-top: 1.2rem; width: 100%; padding: 0.65rem;
+      background: #0055aa; color: #fff; border: none;
+      border-radius: 5px; font-size: 0.95rem; cursor: pointer;
+    }
+    button.run-btn:hover { background: #0044cc; }
+    button.run-btn:disabled { background: #aaa; cursor: default; }
+    .status-box {
+      margin-top: 0.8rem; padding: 0.75rem; border-radius: 5px;
+      font-size: 0.85rem; white-space: pre-wrap; display: none;
+    }
+    .status-box.info  { background: #e8f0ff; color: #003; display: block; }
+    .status-box.ok    { background: #d4edda; color: #155724; display: block; }
+    .status-box.error { background: #f8d7da; color: #721c24; display: block; }
+    a.download-link {
+      display: inline-block; margin-top: 0.8rem; padding: 0.5rem 1rem;
+      background: #198754; color: #fff; border-radius: 4px;
+      text-decoration: none; font-size: 0.9rem;
+    }
+    a.download-link:hover { background: #146c43; }
+    footer { text-align: center; color: #888; font-size: 0.75rem; padding: 2rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AdministrativeToolBox</h1>
+  <p>Roda 100% no navegador · sem instalação · sem servidor</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('siscac', this)">SISCAC → CSV</button>
+  <button class="tab-btn" onclick="switchTab('reinf', this)">EFD-Reinf → ZIP de XMLs</button>
+</div>
+
+<!-- ── PAINEL SISCAC ───────────────────────────────────────────────── -->
+<div id="panel-siscac" class="panel active">
+  <div class="card">
+    <h2>Extração de Relatório SISCAC</h2>
+    <label>Arquivo PDF do SISCAC</label>
+    <input type="file" id="siscac-file" accept=".pdf" />
+    <button class="run-btn" id="siscac-btn" onclick="runSiscac()">Extrair CSV</button>
+    <div id="siscac-status" class="status-box"></div>
+    <div id="siscac-download"></div>
+  </div>
+</div>
+
+<!-- ── PAINEL EFD-REINF ────────────────────────────────────────────── -->
+<div id="panel-reinf" class="panel">
+  <div class="card">
+    <h2>Geração de XMLs EFD-Reinf</h2>
+    <label>Planilha de controle (.xlsx ou .csv)</label>
+    <input type="file" id="reinf-file" accept=".xlsx,.csv" />
+
+    <label>CNPJ do Contribuinte (somente números)</label>
+    <input type="text" id="reinf-cnpj" maxlength="18" placeholder="00000000000100" />
+
+    <label>Razão Social</label>
+    <input type="text" id="reinf-razao" placeholder="EMPRESA EXEMPLO S.A." />
+
+    <div class="row2">
+      <div>
+        <label>Mês de Apuração</label>
+        <input type="number" id="reinf-mes" min="1" max="12" placeholder="1–12" />
+      </div>
+      <div>
+        <label>Ano de Apuração</label>
+        <input type="number" id="reinf-ano" min="2020" max="2099" placeholder="2024" />
+      </div>
+    </div>
+
+    <button class="run-btn" id="reinf-btn" onclick="runReinf()">Gerar ZIP de XMLs</button>
+    <div id="reinf-status" class="status-box"></div>
+    <div id="reinf-download"></div>
+  </div>
+</div>
+
+<footer>AdministrativeToolBox · uso interno</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// UI helpers
+// ═══════════════════════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function setStatus(prefix, type, msg) {
+  const el = document.getElementById(prefix + '-status');
+  el.className = 'status-box ' + type;
+  el.textContent = msg;
+}
+
+function triggerDownload(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Utilitários gerais (portados de efdreinf_xml.py e siscac_payments.py)
+// ═══════════════════════════════════════════════════════════════════════════
+function digitsOnly(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+function fmtDec(val) {
+  const n = parseFloat(val) || 0;
+  return n.toFixed(2);
+}
+
+function parseDecimal(val) {
+  if (val === null || val === undefined || val === '') return 0;
+  let s = String(val).trim().replace(/\s/g, '');
+  // Formato BR: 1.234,56
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function parseDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  // dd/mm/yyyy
+  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+  // yyyy-mm-dd
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return s;
+  return null;
+}
+
+// Normaliza header: minúsculas, sem acentos, sem espaços duplos
+function normalizeHeader(s) {
+  s = String(s || '').trim().toLowerCase();
+  s = s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  s = s.replace(/\s+/g, ' ');
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EFD-Reinf: mapeamento de colunas (portado de _COL_ALIASES)
+// ═══════════════════════════════════════════════════════════════════════════
+const COL_ALIASES = {
+  cnpj_emitente:       ['cnpj emitente','cnpj_emitente','cnpj prestador','cnpj do prestador','cnpj'],
+  nome_emitente:       ['nome emitente','nome_emitente','razao social','razão social','prestador','abreviatura'],
+  numero_nf:           ['numero nf','número nf','numero_nf','nf','número da nf','nota fiscal'],
+  serie_nf:            ['série nf','serie nf','serie_nf','série da nf'],
+  data_emissao:        ['data emissão','data emissao','data_emissao','emissão','emissao','data pagto'],
+  valor_bruto:         ['valor bruto','valor_bruto','vr bruto','bruto','valor tributável','valor tributavel'],
+  codigo_imposto:      ['código imposto','codigo imposto','codigo_imposto','código de receita','código',
+                        'cod. receita (siscac)','cod receita (siscac)','cod receita','cód. receita (siscac)'],
+  serie_reinf:         ['série reinf','serie reinf','serie_reinf'],
+  natureza_rendimento: ['natureza rendimento','natureza_rendimento','natureza','nat rendimento',
+                        'natureza rendimento (cód. ecac)','natureza rendimento (cod. ecac)',
+                        'natureza rendimento (cod ecac)','natureza rendimento cod ecac'],
+  base_calculo:        ['base de cálculo','base de calculo','base_calculo','rendimento tributável',
+                        'rendimento tributavel','base calculo','valor tributável','valor tributavel'],
+  valor_retido:        ['valor retido','valor_retido','vr retido','imposto retido',
+                        'retencao individual','retenção individual'],
+  retencao_agregada:   ['retencao agregada','retenção agregada'],
+  cnpj_beneficiario:   ['cnpj beneficiário','cnpj beneficiario','cnpj_beneficiario','cpf/cnpj beneficiário'],
+  nome_beneficiario:   ['nome beneficiário','nome beneficiario','nome_beneficiario','beneficiário','beneficiario'],
+  tipo_beneficiario:   ['tipo beneficiário','tipo beneficiario','tipo_beneficiario','pf/pj','tipo'],
+};
+
+function resolveColumns(headerRow) {
+  const normalized = headerRow.map(normalizeHeader);
+  const mapping = {};
+  for (const [canonical, aliases] of Object.entries(COL_ALIASES)) {
+    for (const alias of aliases) {
+      const aliasNorm = normalizeHeader(alias);
+      const idx = normalized.indexOf(aliasNorm);
+      if (idx >= 0) { mapping[canonical] = idx; break; }
+    }
+  }
+  return mapping;
+}
+
+function naturezaValida(s) {
+  return /^\d{5}$/.test(String(s || '').trim());
+}
+
+function inferSerieReinf(natureza) {
+  return naturezaValida(natureza) ? 'S4000' : 'S2000';
+}
+
+function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
+  const get = key => {
+    const idx = colMap[key];
+    return (idx !== undefined && idx < row.length) ? row[idx] : null;
+  };
+
+  const natureza = String(get('natureza_rendimento') || '').trim();
+  const codigoImposto = String(get('codigo_imposto') || '').trim();
+  const serieRaw = String(get('serie_reinf') || '').trim().toUpperCase();
+
+  let serieReinf;
+  if (hasSerieColumn) {
+    if (serieRaw !== 'S2000' && serieRaw !== 'S4000') return null;
+    serieReinf = serieRaw;
+  } else {
+    serieReinf = inferSerieReinf(natureza);
+  }
+
+  const numeroNf = String(get('numero_nf') || '').trim() || `ROW${rowNum}`;
+
+  let valorBruto = parseDecimal(get('valor_bruto') ?? get('base_calculo'));
+  let baseCalculo = parseDecimal(get('base_calculo') ?? get('valor_bruto'));
+  let valorRetido = parseDecimal(get('valor_retido'));
+  if (valorRetido <= 0) {
+    valorRetido = parseDecimal(get('retencao_agregada') || get('valor_retido'));
+  }
+
+  return {
+    cnpj_emitente:       digitsOnly(get('cnpj_emitente')),
+    nome_emitente:       String(get('nome_emitente') || '').trim(),
+    numero_nf:           numeroNf,
+    serie_nf:            String(get('serie_nf') || '').trim(),
+    data_emissao:        parseDate(get('data_emissao')),
+    valor_bruto:         valorBruto,
+    codigo_imposto:      codigoImposto,
+    serie_reinf:         serieReinf,
+    natureza_rendimento: natureza,
+    base_calculo:        baseCalculo,
+    valor_retido:        valorRetido,
+    cnpj_beneficiario:   digitsOnly(get('cnpj_beneficiario')),
+    nome_beneficiario:   String(get('nome_beneficiario') || '').trim(),
+    tipo_beneficiario:   String(get('tipo_beneficiario') || 'PJ').trim().toUpperCase(),
+  };
+}
+
+// Lê XLSX usando SheetJS; retorna array de records
+function readXlsxSheet(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  if (!rows.length) return [];
+
+  const header = rows[0].map(h => h === null ? '' : String(h));
+  const colMap = resolveColumns(header);
+  const hasSerieColumn = 'serie_reinf' in colMap;
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row.some(v => v !== null && String(v).trim() !== '')) continue;
+    const rec = rowToRecord(row, i + 1, colMap, hasSerieColumn);
+    if (rec) records.push(rec);
+  }
+  return records;
+}
+
+// Lê CSV (texto) e retorna records
+function readCsvText(text) {
+  // Detecta separador
+  const sample = text.slice(0, 2048);
+  let sep = ',';
+  for (const c of [';', '\t', '|']) {
+    if ((sample.match(new RegExp('\\' + c, 'g')) || []).length >
+        (sample.match(/,/g) || []).length) { sep = c; break; }
+  }
+
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const parseLine = line => {
+    const result = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === sep && !inQ) {
+        result.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const rows = lines.map(parseLine).filter(r => r.some(v => v !== ''));
+  if (!rows.length) return [];
+
+  const colMap = resolveColumns(rows[0]);
+  const hasSerieColumn = 'serie_reinf' in colMap;
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const rec = rowToRecord(rows[i], i + 1, colMap, hasSerieColumn);
+    if (rec) records.push(rec);
+  }
+  return records;
+}
+
+function readControlSheet(arrayBuffer, filename) {
+  if (filename.toLowerCase().endsWith('.csv')) {
+    // Tenta decodificar como UTF-8-BOM ou UTF-8
+    const text = new TextDecoder('utf-8').decode(arrayBuffer).replace(/^\uFEFF/, '');
+    return readCsvText(text);
+  }
+  return readXlsxSheet(arrayBuffer);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Validação
+// ═══════════════════════════════════════════════════════════════════════════
+function validateRecords(records) {
+  const issues = [];
+  records.forEach((rec, i) => {
+    const row = i + 2;
+    if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
+    if (rec.serie_reinf === 'S4000' && !naturezaValida(rec.natureza_rendimento))
+      issues.push(`Linha ${row}: Natureza Rendimento inválida (${rec.natureza_rendimento}) para S4000.`);
+    if (rec.valor_retido <= 0)
+      issues.push(`Linha ${row}: Valor Retido deve ser positivo.`);
+  });
+  return issues;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Construtores XML
+// ═══════════════════════════════════════════════════════════════════════════
+function prettifyXml(xmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+  const xs = new XMLSerializer();
+  // Fallback: devolve sem pretty-print em ambientes sem XSLT
+  // Implementação manual simples de indentação
+  let out = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  function walk(node, depth) {
+    const indent = '  '.repeat(depth);
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent.trim();
+      if (t) out += indent + t + '\n';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName;
+    const attrs = Array.from(node.attributes).map(a => ` ${a.name}="${a.value}"`).join('');
+    const children = Array.from(node.childNodes).filter(
+      c => c.nodeType === Node.ELEMENT_NODE || (c.nodeType === Node.TEXT_NODE && c.textContent.trim())
+    );
+    if (children.length === 0) {
+      out += `${indent}<${tag}${attrs} />\n`;
+    } else if (children.length === 1 && children[0].nodeType === Node.TEXT_NODE) {
+      out += `${indent}<${tag}${attrs}>${children[0].textContent.trim()}</${tag}>\n`;
+    } else {
+      out += `${indent}<${tag}${attrs}>\n`;
+      children.forEach(c => walk(c, depth + 1));
+      out += `${indent}</${tag}>\n`;
+    }
+  }
+  walk(doc.documentElement, 0);
+  return out;
+}
+
+function buildXml(tagName, ns, builderFn) {
+  const doc = document.implementation.createDocument(ns, tagName, null);
+  const root = doc.documentElement;
+  builderFn(doc, root);
+  const xs = new XMLSerializer();
+  return prettifyXml(xs.serializeToString(root));
+}
+
+function addEl(doc, parent, tag, text) {
+  const el = doc.createElement(tag);
+  if (text !== undefined && text !== null) el.textContent = String(text);
+  parent.appendChild(el);
+  return el;
+}
+
+function buildR1000(cnpj, razaoSocial) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtInfoContri/v2_01_01', (doc, root) => {
+    const evt = addEl(doc, root, 'evtInfoContri');
+    const ide = addEl(doc, evt, 'ideContri');
+    addEl(doc, ide, 'tpInsc', '1');
+    addEl(doc, ide, 'nrInsc', cnpj);
+    addEl(doc, ide, 'nmRazao', razaoSocial);
+  });
+}
+
+function buildR2010(cnpjContrib, cnpjPrestador, records, month, year) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtServTom/v2_01_01', (doc, root) => {
+    const evt = addEl(doc, root, 'evtServTom');
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'indRetif', '1');
+    addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2,'0')}`);
+    addEl(doc, ideEvt, 'tpAmb', '2');
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContrib = addEl(doc, evt, 'ideContrib');
+    addEl(doc, ideContrib, 'tpInsc', '1');
+    addEl(doc, ideContrib, 'nrInsc', cnpjContrib);
+
+    const ideEstab = addEl(doc, evt, 'ideEstab');
+    addEl(doc, ideEstab, 'tpInsc', '1');
+    addEl(doc, ideEstab, 'nrInsc', cnpjContrib);
+
+    const detEvt = addEl(doc, ideEstab, 'detEvt');
+
+    // Group by NF
+    const nfGroups = {};
+    for (const rec of records) {
+      const key = `${rec.numero_nf}||${rec.data_emissao}||${rec.valor_bruto}`;
+      if (!nfGroups[key]) nfGroups[key] = [];
+      nfGroups[key].push(rec);
+    }
+
+    for (const [, nfRecs] of Object.entries(nfGroups)) {
+      const nfSeq = addEl(doc, detEvt, 'nfSeq');
+      addEl(doc, nfSeq, 'nrNF', nfRecs[0].numero_nf);
+      addEl(doc, nfSeq, 'dtEmiNF', nfRecs[0].data_emissao || '');
+      addEl(doc, nfSeq, 'vrBruto', fmtDec(nfRecs[0].valor_bruto));
+      const detRet = addEl(doc, nfSeq, 'detRet');
+      const baseTotal = nfRecs.reduce((s, r) => s + r.base_calculo, 0);
+      const retTotal  = nfRecs.reduce((s, r) => s + r.valor_retido, 0);
+      addEl(doc, detRet, 'vrBaseRet', fmtDec(baseTotal));
+      addEl(doc, detRet, 'vrRet', fmtDec(retTotal));
+    }
+  });
+}
+
+function buildR4020(cnpjContrib, cnpjPrestador, records, month, year) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtRetPJ/v2_01_01', (doc, root) => {
+    const evt = addEl(doc, root, 'evtRetPJ');
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'indRetif', '1');
+    addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2,'0')}`);
+    addEl(doc, ideEvt, 'tpAmb', '2');
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContrib = addEl(doc, evt, 'ideContrib');
+    addEl(doc, ideContrib, 'tpInsc', '1');
+    addEl(doc, ideContrib, 'nrInsc', cnpjContrib);
+
+    const idePJ = addEl(doc, evt, 'idePJ');
+    addEl(doc, idePJ, 'cnpjPrestador', cnpjPrestador);
+
+    // Group by natureza
+    const groups = {};
+    for (const rec of records) {
+      if (!groups[rec.natureza_rendimento]) groups[rec.natureza_rendimento] = [];
+      groups[rec.natureza_rendimento].push(rec);
+    }
+
+    for (const [natureza, natRecs] of Object.entries(groups)) {
+      const detPag = addEl(doc, idePJ, 'detPag');
+      addEl(doc, detPag, 'natRend', natureza);
+      addEl(doc, detPag, 'vrBaseRet', fmtDec(natRecs.reduce((s, r) => s + r.base_calculo, 0)));
+      addEl(doc, detPag, 'vrRet',     fmtDec(natRecs.reduce((s, r) => s + r.valor_retido, 0)));
+    }
+  });
+}
+
+function buildFechamento(evento, perApur) {
+  return buildXml('Reinf', '', (doc, root) => {
+    const evt = addEl(doc, root, evento);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'perApur', perApur);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Orquestrador EFD-Reinf
+// ═══════════════════════════════════════════════════════════════════════════
+function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, year) {
+  const records = readControlSheet(arrayBuffer, filename);
+  if (!records.length) throw new Error('Nenhum registro S2000/S4000 encontrado na planilha.');
+
+  const issues = validateRecords(records);
+  if (issues.length) throw new Error('Inconsistências:\n' + issues.join('\n'));
+
+  const cnpj = digitsOnly(cnpjContrib);
+  const perApur = `${year}-${String(month).padStart(2,'0')}`;
+
+  const inssByPrestador = {};
+  const federalByPrestador = {};
+  for (const rec of records) {
+    if (rec.serie_reinf === 'S2000') {
+      if (!inssByPrestador[rec.cnpj_emitente]) inssByPrestador[rec.cnpj_emitente] = [];
+      inssByPrestador[rec.cnpj_emitente].push(rec);
+    } else {
+      if (!federalByPrestador[rec.cnpj_emitente]) federalByPrestador[rec.cnpj_emitente] = [];
+      federalByPrestador[rec.cnpj_emitente].push(rec);
+    }
+  }
+
+  const xmls = {};
+  xmls['R-1000_Cadastro_Empresa.xml'] = buildR1000(cnpj, razaoSocial);
+
+  for (const [prest, recs] of Object.entries(inssByPrestador)) {
+    xmls[`INSS_R2010/R2010_CNPJ_${prest}_${year}${String(month).padStart(2,'0')}.xml`] =
+      buildR2010(cnpj, prest, recs, month, year);
+  }
+  if (Object.keys(inssByPrestador).length)
+    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildFechamento('evtFechaEvPer', perApur);
+
+  for (const [prest, recs] of Object.entries(federalByPrestador)) {
+    xmls[`Federais_R4020/R4020_CNPJ_${prest}_${year}${String(month).padStart(2,'0')}.xml`] =
+      buildR4020(cnpj, prest, recs, month, year);
+  }
+  if (Object.keys(federalByPrestador).length)
+    xmls['Federais_R4020/R4099_Fechamento.xml'] = buildFechamento('evtFechaEvPer', perApur);
+
+  return xmls;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SISCAC: extração via pdf.js
+// ═══════════════════════════════════════════════════════════════════════════
+
+function extractLinesFromPdfTextItems(items) {
+  const lines = [];
+  let current = '';
+  let prevY = null;
+
+  for (const item of items) {
+    const str = (item.str || '').trim();
+    const y = Array.isArray(item.transform) ? item.transform[5] : null;
+    const changedLine = prevY !== null && y !== null && Math.abs(y - prevY) > 2;
+
+    if (changedLine && current) {
+      lines.push(current);
+      current = '';
+    }
+
+    if (str) {
+      current = current ? current + ' ' + str : str;
+    }
+
+    if (item.hasEOL && current) {
+      lines.push(current);
+      current = '';
+    }
+
+    if (y !== null) prevY = y;
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
+async function parseSiscacPdf(arrayBuffer) {
+  if (typeof pdfjsLib === 'undefined') {
+    throw new Error('pdf.js não carregou. Verifique se os arquivos locais em ./vendor/js existem.');
+  }
+
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true }).promise;
+  const payments = {};
+  let currentComprovante = null;
+  let currentData = null;
+
+  // Padrões (portados de siscac_payments.py)
+  const rePay = /^(20\d{2}PG\d{5})\s+(.*?)\s+20\d{2}NE\d{5}.*?([\d.,]+)$/;
+  const reData = /\bdata\b[:\s]*([\d]{2}\/[\d]{2}\/[\d]{4})/i;
+  const reComp = /N[o°º]\s*do\s*Comprovante[:\s]*([\d.\-]+)/i;
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const lines = extractLinesFromPdfTextItems(content.items || []);
+
+    for (const line of lines) {
+      const mComp = reComp.exec(line);
+      if (mComp) currentComprovante = mComp[1].replace(/\./g, '');
+
+      const mData = reData.exec(line);
+      if (mData) currentData = mData[1];
+
+      const mPay = rePay.exec(line);
+      if (mPay) {
+        const pg = mPay[1];
+        const credor = mPay[2].trim();
+        const valorStr = mPay[3].replace(/\./g, '').replace(',', '.');
+        const valor = parseFloat(valorStr) || 0;
+
+        if (payments[pg]) {
+          payments[pg].valor_total += valor;
+        } else {
+          payments[pg] = {
+            siscac_pg: pg,
+            credor,
+            valor_total: valor,
+            data_contabilizado: currentData,
+            comprovante: currentComprovante,
+          };
+        }
+      }
+    }
+  }
+  return Object.values(payments);
+}
+
+function paymentsToCsv(payments) {
+  const fields = ['credor','siscac_pg','valor_total','data_contabilizado','comprovante'];
+  const header = fields.join(',');
+  const rows = payments.map(p =>
+    fields.map(f => {
+      let v = p[f] !== null && p[f] !== undefined ? String(p[f]) : '';
+      if (f === 'valor_total') {
+        const n = parseFloat(p[f]);
+        if (!isNaN(n)) v = n.toFixed(2).replace('.', ',');
+      }
+      return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v;
+    }).join(',')
+  );
+  return '\uFEFF' + [header, ...rows].join('\n');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Handlers dos botões
+// ═══════════════════════════════════════════════════════════════════════════
+async function runSiscac() {
+  const fileInput = document.getElementById('siscac-file');
+  const btn = document.getElementById('siscac-btn');
+  const dlDiv = document.getElementById('siscac-download');
+  dlDiv.innerHTML = '';
+
+  if (!fileInput.files.length) {
+    setStatus('siscac', 'error', 'Selecione um arquivo PDF.');
+    return;
+  }
+
+  btn.disabled = true;
+  setStatus('siscac', 'info', 'Processando PDF...');
+
+  try {
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+    const payments = await parseSiscacPdf(buf);
+
+    if (!payments.length) {
+      setStatus('siscac', 'error',
+        'Nenhum pagamento encontrado no PDF.\n\n' +
+        'Nota: o parsing do SISCAC foi implementado com base nos padrões ' +
+        'conhecidos do relatório. Se o formato do seu PDF for diferente, ' +
+        'entre em contato para ajustar os padrões de extração.');
+      return;
+    }
+
+    const csvText = paymentsToCsv(payments);
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+    const name = file.name.replace(/\.pdf$/i, '') + '_pagamentos.csv';
+
+    setStatus('siscac', 'ok', `✓ ${payments.length} pagamento(s) extraído(s).`);
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${name}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('siscac', 'error', 'Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runReinf() {
+  const fileInput = document.getElementById('reinf-file');
+  const cnpj = document.getElementById('reinf-cnpj').value.trim();
+  const razao = document.getElementById('reinf-razao').value.trim();
+  const mes = parseInt(document.getElementById('reinf-mes').value, 10);
+  const ano = parseInt(document.getElementById('reinf-ano').value, 10);
+  const btn = document.getElementById('reinf-btn');
+  const dlDiv = document.getElementById('reinf-download');
+  dlDiv.innerHTML = '';
+
+  if (!fileInput.files.length) { setStatus('reinf','error','Selecione um arquivo XLSX ou CSV.'); return; }
+  if (!cnpj) { setStatus('reinf','error','Informe o CNPJ do Contribuinte.'); return; }
+  if (!razao) { setStatus('reinf','error','Informe a Razão Social.'); return; }
+  if (!mes || mes < 1 || mes > 12) { setStatus('reinf','error','Mês inválido (1–12).'); return; }
+  if (!ano || ano < 2020) { setStatus('reinf','error','Ano inválido.'); return; }
+
+  btn.disabled = true;
+  setStatus('reinf','info','Processando planilha...');
+
+  try {
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+    const xmls = gerarXmlsReinf(buf, file.name, cnpj, razao, mes, ano);
+
+    const zip = new JSZip();
+    for (const [path, content] of Object.entries(xmls)) {
+      zip.file(path, content);
+    }
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipName = `EFD_Reinf_${ano}${String(mes).padStart(2,'0')}.zip`;
+
+    setStatus('reinf', 'ok', `✓ ${Object.keys(xmls).length} arquivo(s) XML gerado(s).`);
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = zipName;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${zipName}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('reinf','error','Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Aviso se bibliotecas locais não carregarem
+window.addEventListener('load', () => {
+  const missing = [];
+  if (typeof XLSX === 'undefined') missing.push('SheetJS (XLSX)');
+  if (typeof JSZip === 'undefined') missing.push('JSZip');
+  if (typeof pdfjsLib === 'undefined') missing.push('pdf.js');
+  if (missing.length) {
+    document.body.insertAdjacentHTML('afterbegin',
+      `<div style="background:#f8d7da;color:#721c24;padding:1rem 2rem;font-size:.9rem">
+        ⚠ Biblioteca(s) não carregada(s): ${missing.join(', ')}.<br>
+        Verifique se a pasta local ./vendor/js está presente e recarregue a página.
+      </div>`);
+  }
+});
+</script>
+</body>
+</html>
