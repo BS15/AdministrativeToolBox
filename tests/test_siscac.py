@@ -7,26 +7,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from toolbox.siscac_payments import parse_siscac_report, payments_to_csv
+from toolbox.siscac_payments import parse_siscac_report, payments_to_csv, payments_to_csv_string
 
 
 # ---------------------------------------------------------------------------
-# parse_siscac_report
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _make_fake_pdf(pages_text: list[str]):
-    """Cria um mock de pdfplumber que retorna as páginas de texto fornecidas."""
+def _make_fake_reader(pages_text: list[str]):
+    """Cria um mock de PdfReader com as páginas de texto fornecidas."""
     mock_pages = []
     for text in pages_text:
         page = MagicMock()
         page.extract_text.return_value = text
         mock_pages.append(page)
 
-    mock_pdf = MagicMock()
-    mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-    mock_pdf.__exit__ = MagicMock(return_value=False)
-    mock_pdf.pages = mock_pages
-    return mock_pdf
+    mock_reader = MagicMock()
+    mock_reader.pages = mock_pages
+    return mock_reader
 
 
 SAMPLE_PAGE = """\
@@ -43,11 +41,15 @@ Nº do Comprovante: 2024.00002
 """
 
 
-@patch('toolbox.siscac_payments.pdfplumber.open')
-def test_parse_siscac_report_basic(mock_open, tmp_path):
-    mock_open.return_value = _make_fake_pdf([SAMPLE_PAGE])
+# ---------------------------------------------------------------------------
+# parse_siscac_report
+# ---------------------------------------------------------------------------
 
-    result = parse_siscac_report(tmp_path / 'fake.pdf')
+@patch('toolbox.siscac_payments.PdfReader')
+def test_parse_siscac_report_basic(mock_reader_class):
+    mock_reader_class.return_value = _make_fake_reader([SAMPLE_PAGE])
+
+    result = parse_siscac_report(b'fake pdf bytes')
 
     assert len(result) == 2
     pg_ids = {r['siscac_pg'] for r in result}
@@ -61,23 +63,31 @@ def test_parse_siscac_report_basic(mock_open, tmp_path):
     assert alfa['comprovante'] == '202400001'
 
 
-@patch('toolbox.siscac_payments.pdfplumber.open')
-def test_parse_siscac_report_accumulates_same_pg(mock_open, tmp_path):
-    mock_open.return_value = _make_fake_pdf([SAMPLE_PAGE_MULTI])
+@patch('toolbox.siscac_payments.PdfReader')
+def test_parse_siscac_report_accumulates_same_pg(mock_reader_class):
+    mock_reader_class.return_value = _make_fake_reader([SAMPLE_PAGE_MULTI])
 
-    result = parse_siscac_report(tmp_path / 'fake.pdf')
+    result = parse_siscac_report(b'fake pdf bytes')
 
     assert len(result) == 1
     assert result[0]['valor_total'] == Decimal('1500.00')
 
 
-@patch('toolbox.siscac_payments.pdfplumber.open')
-def test_parse_siscac_report_empty(mock_open, tmp_path):
-    mock_open.return_value = _make_fake_pdf(['Sem dados relevantes aqui.'])
+@patch('toolbox.siscac_payments.PdfReader')
+def test_parse_siscac_report_empty(mock_reader_class):
+    mock_reader_class.return_value = _make_fake_reader(['Sem dados relevantes aqui.'])
 
-    result = parse_siscac_report(tmp_path / 'fake.pdf')
+    result = parse_siscac_report(b'fake pdf bytes')
 
     assert result == []
+
+
+@patch('toolbox.siscac_payments.PdfReader')
+def test_parse_siscac_report_accepts_bytesio(mock_reader_class):
+    mock_reader_class.return_value = _make_fake_reader([SAMPLE_PAGE])
+
+    result = parse_siscac_report(io.BytesIO(b'fake pdf bytes'))
+    assert len(result) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -111,3 +121,31 @@ def test_payments_to_csv_header_columns(tmp_path):
     payments_to_csv(payments, out)
     lines = out.read_text(encoding='utf-8-sig').splitlines()
     assert lines[0] == 'siscac_pg,credor,nota_empenho,valor_total,comprovante'
+
+
+# ---------------------------------------------------------------------------
+# payments_to_csv_string (browser / PyScript use)
+# ---------------------------------------------------------------------------
+
+def test_payments_to_csv_string_returns_string():
+    payments = [
+        {
+            'siscac_pg': '2024PG00001',
+            'credor': 'EMPRESA ALFA LTDA',
+            'nota_empenho': '2024NE00100',
+            'valor_total': Decimal('10500.00'),
+            'comprovante': '202400001',
+        }
+    ]
+    result = payments_to_csv_string(payments)
+
+    assert isinstance(result, str)
+    assert result.startswith('\ufeff')  # BOM for Excel
+    assert '2024PG00001' in result
+    assert '10500,00' in result
+
+
+def test_payments_to_csv_string_empty():
+    result = payments_to_csv_string([])
+    assert isinstance(result, str)
+    assert 'siscac_pg' in result  # header still present

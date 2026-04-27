@@ -16,6 +16,7 @@ from toolbox.efdreinf_xml import (
     _natureza_rendimento_valida,
     read_control_sheet,
     validate_records,
+    gerar_xmls_reinf,
 )
 
 
@@ -241,3 +242,44 @@ def test_gerar_lotes_reinf_generates_files(tmp_path):
     for path in generated.values():
         assert path.exists()
         assert path.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# Integration: gerar_xmls_reinf (browser / PyScript use)
+# ---------------------------------------------------------------------------
+
+def test_gerar_xmls_reinf_returns_strings(tmp_path):
+    xlsx = _make_sample_xlsx(tmp_path, [SAMPLE_INSS_ROW, SAMPLE_FEDERAL_ROW])
+
+    xmls = gerar_xmls_reinf(
+        xlsx_source=xlsx,
+        cnpj_contribuinte=CNPJ_CONTRIB,
+        razao_social='Empresa Teste Ltda',
+        month=6,
+        year=2024,
+    )
+
+    assert isinstance(xmls, dict)
+    assert 'R-1000_Cadastro_Empresa.xml' in xmls
+    assert any('R2010' in k for k in xmls)
+    assert any('R4020' in k for k in xmls)
+    for content in xmls.values():
+        assert isinstance(content, str)
+        assert '<?xml' in content
+
+
+def test_gerar_xmls_reinf_accepts_bytesio(tmp_path):
+    import io as _io
+    xlsx_path = _make_sample_xlsx(tmp_path, [SAMPLE_INSS_ROW])
+    xlsx_bytes = xlsx_path.read_bytes()
+
+    xmls = gerar_xmls_reinf(
+        xlsx_source=_io.BytesIO(xlsx_bytes),
+        cnpj_contribuinte=CNPJ_CONTRIB,
+        razao_social='Empresa Teste Ltda',
+        month=6,
+        year=2024,
+    )
+
+    assert 'R-1000_Cadastro_Empresa.xml' in xmls
+    assert any('R2010' in k for k in xmls)

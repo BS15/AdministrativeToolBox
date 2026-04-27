@@ -23,6 +23,7 @@ Formato esperado da planilha de controle (Excel .xlsx):
     Tipo Beneficiário       | PF ou PJ (usado em S4000 para escolher R-4010 ou R-4020)
 """
 
+import io
 import re
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
@@ -123,16 +124,18 @@ def _parse_decimal(value) -> Decimal:
         return Decimal('0')
 
 
-def read_control_sheet(xlsx_path: str | Path) -> list[dict]:
+def read_control_sheet(xlsx_source) -> list[dict]:
     """Lê a planilha de controle e retorna lista de registros normalizados.
 
     Args:
-        xlsx_path: Caminho do arquivo .xlsx da planilha de controle.
+        xlsx_source: Caminho do arquivo .xlsx (str/Path), bytes ou BytesIO.
 
     Returns:
         Lista de dicionários com chaves canônicas conforme _COL_ALIASES.
     """
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    if isinstance(xlsx_source, bytes):
+        xlsx_source = io.BytesIO(xlsx_source)
+    wb = openpyxl.load_workbook(xlsx_source, read_only=True, data_only=True)
     ws = wb.active
 
     rows = list(ws.iter_rows(values_only=True))
@@ -300,6 +303,69 @@ def _build_fechamento_xml(evento: str, per_apur: str) -> str:
 # Orquestrador principal
 # ---------------------------------------------------------------------------
 
+def gerar_xmls_reinf(
+    xlsx_source,
+    cnpj_contribuinte: str,
+    razao_social: str,
+    month: int,
+    year: int,
+) -> dict[str, str]:
+    """Lê a planilha de controle e retorna os XMLs EFD-Reinf como strings em memória.
+
+    Adequado para uso no browser (PyScript): não escreve arquivos em disco.
+
+    Args:
+        xlsx_source:       Planilha de controle (.xlsx) – caminho, bytes ou BytesIO.
+        cnpj_contribuinte: CNPJ da empresa declarante (somente dígitos ou formatado).
+        razao_social:      Razão social da empresa declarante.
+        month:             Mês de apuração (1–12).
+        year:              Ano de apuração (ex: 2024).
+
+    Returns:
+        Dicionário {nome_arquivo: xml_string} com todos os XMLs gerados.
+
+    Raises:
+        ValueError: Se forem encontradas inconsistências nos dados.
+    """
+    records = read_control_sheet(xlsx_source)
+    if not records:
+        raise ValueError("Nenhum registro S2000/S4000 encontrado na planilha.")
+
+    issues = validate_records(records)
+    if issues:
+        raise ValueError("Inconsistências encontradas:\n" + "\n".join(issues))
+
+    cnpj_contribuinte = _digits_only(cnpj_contribuinte)
+    per_apur = f'{year}-{month:02d}'
+
+    inss_by_cnpj: dict[str, list[dict]] = defaultdict(list)
+    federal_by_cnpj: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        if rec['serie_reinf'] == 'S2000':
+            inss_by_cnpj[rec['cnpj_emitente']].append(rec)
+        elif rec['serie_reinf'] == 'S4000':
+            federal_by_cnpj[rec['cnpj_emitente']].append(rec)
+
+    xmls: dict[str, str] = {}
+    xmls['R-1000_Cadastro_Empresa.xml'] = _build_r1000_xml(cnpj_contribuinte, razao_social)
+
+    for cnpj_prestador, recs in inss_by_cnpj.items():
+        filename = f'INSS_R2010/R2010_CNPJ_{cnpj_prestador}_{year}{month:02d}.xml'
+        xmls[filename] = _build_r2010_xml(cnpj_contribuinte, cnpj_prestador, recs, month, year)
+
+    if inss_by_cnpj:
+        xmls['INSS_R2010/R2099_Fechamento.xml'] = _build_fechamento_xml('evtFechaEvPer', per_apur)
+
+    for cnpj_prestador, recs in federal_by_cnpj.items():
+        filename = f'Federais_R4020/R4020_CNPJ_{cnpj_prestador}_{year}{month:02d}.xml'
+        xmls[filename] = _build_r4020_xml(cnpj_contribuinte, cnpj_prestador, recs, month, year)
+
+    if federal_by_cnpj:
+        xmls['Federais_R4020/R4099_Fechamento.xml'] = _build_fechamento_xml('evtFechaEvPer', per_apur)
+
+    return xmls
+
+
 def gerar_lotes_reinf(
     xlsx_path: str | Path,
     cnpj_contribuinte: str,
@@ -308,7 +374,7 @@ def gerar_lotes_reinf(
     year: int,
     output_dir: str | Path,
 ) -> dict[str, Path]:
-    """Lê a planilha de controle e gera os arquivos XML EFD-Reinf.
+    """Lê a planilha de controle e grava os XMLs EFD-Reinf em disco (uso via CLI).
 
     Args:
         xlsx_path:        Planilha de controle (.xlsx).
@@ -324,72 +390,16 @@ def gerar_lotes_reinf(
     Raises:
         ValueError: Se forem encontradas inconsistências nos dados.
     """
-    records = read_control_sheet(xlsx_path)
-    if not records:
-        raise ValueError("Nenhum registro S2000/S4000 encontrado na planilha.")
+    xmls = gerar_xmls_reinf(xlsx_path, cnpj_contribuinte, razao_social, month, year)
 
-    issues = validate_records(records)
-    if issues:
-        raise ValueError("Inconsistências encontradas:\n" + "\n".join(issues))
-
-    cnpj_contribuinte = _digits_only(cnpj_contribuinte)
-    per_apur = f'{year}-{month:02d}'
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Separate records by serie
-    inss_by_cnpj: dict[str, list[dict]] = defaultdict(list)
-    federal_by_cnpj: dict[str, list[dict]] = defaultdict(list)
-    for rec in records:
-        if rec['serie_reinf'] == 'S2000':
-            inss_by_cnpj[rec['cnpj_emitente']].append(rec)
-        elif rec['serie_reinf'] == 'S4000':
-            federal_by_cnpj[rec['cnpj_emitente']].append(rec)
-
-    # Sub-directories
-    inss_dir = output_dir / 'INSS_R2010'
-    federal_dir = output_dir / 'Federais_R4020'
-    inss_dir.mkdir(exist_ok=True)
-    federal_dir.mkdir(exist_ok=True)
-
     generated: dict[str, Path] = {}
 
-    # R-1000
-    r1000_path = output_dir / 'R-1000_Cadastro_Empresa.xml'
-    r1000_path.write_text(_build_r1000_xml(cnpj_contribuinte, razao_social), encoding='utf-8')
-    generated['R-1000_Cadastro_Empresa.xml'] = r1000_path
-
-    # R-2010 (one per CNPJ prestador)
-    for cnpj_prestador, recs in inss_by_cnpj.items():
-        filename = f'R2010_CNPJ_{cnpj_prestador}_{year}{month:02d}.xml'
-        path = inss_dir / filename
-        path.write_text(
-            _build_r2010_xml(cnpj_contribuinte, cnpj_prestador, recs, month, year),
-            encoding='utf-8',
-        )
-        generated[f'INSS_R2010/{filename}'] = path
-
-    # R-2099 fechamento
-    if inss_by_cnpj:
-        r2099_path = inss_dir / 'R2099_Fechamento.xml'
-        r2099_path.write_text(_build_fechamento_xml('evtFechaEvPer', per_apur), encoding='utf-8')
-        generated['INSS_R2010/R2099_Fechamento.xml'] = r2099_path
-
-    # R-4020 (one per CNPJ prestador / beneficiário)
-    for cnpj_prestador, recs in federal_by_cnpj.items():
-        filename = f'R4020_CNPJ_{cnpj_prestador}_{year}{month:02d}.xml'
-        path = federal_dir / filename
-        path.write_text(
-            _build_r4020_xml(cnpj_contribuinte, cnpj_prestador, recs, month, year),
-            encoding='utf-8',
-        )
-        generated[f'Federais_R4020/{filename}'] = path
-
-    # R-4099 fechamento
-    if federal_by_cnpj:
-        r4099_path = federal_dir / 'R4099_Fechamento.xml'
-        r4099_path.write_text(_build_fechamento_xml('evtFechaEvPer', per_apur), encoding='utf-8')
-        generated['Federais_R4020/R4099_Fechamento.xml'] = r4099_path
+    for filename, xml_str in xmls.items():
+        path = output_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(xml_str, encoding='utf-8')
+        generated[filename] = path
 
     return generated
 
@@ -397,6 +407,7 @@ def gerar_lotes_reinf(
 __all__ = [
     'read_control_sheet',
     'validate_records',
+    'gerar_xmls_reinf',
     'gerar_lotes_reinf',
     '_build_r1000_xml',
     '_build_r2010_xml',
