@@ -624,7 +624,8 @@ async function parseSiscacPdf(arrayBuffer) {
   let currentData = null;
 
   // Padrões (portados de siscac_payments.py)
-  const rePay = /^(20\d{2}PG\d{5})\s+(.*?)\s+20\d{2}NE\d{5}.*?([\d.,]+)$/;
+  const rePay = /^(20\d{2}PG\d{5})\s+(.*?)\s+(?:20\d{2}NE\d{5}\s+)?\d{5}\/\d{4}\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.,]+)$/;
+  const rePayLegacy = /^(20\d{2}PG\d{5})\s+(.*?)\s+20\d{2}NE\d{5}.*?([\d.,]+)$/;
   const reData = /\bdata\b[:\s]*([\d]{2}\/[\d]{2}\/[\d]{4})/i;
   const reComp = /N[o°º]\s*do\s*Comprovante[:\s]*([\d.\-]+)/i;
 
@@ -640,21 +641,28 @@ async function parseSiscacPdf(arrayBuffer) {
       const mData = reData.exec(line);
       if (mData) currentData = mData[1];
 
-      const mPay = rePay.exec(line);
+      let mPay = rePay.exec(line);
+      const hasDateInLine = !!mPay;
+      if (!mPay) mPay = rePayLegacy.exec(line);
       if (mPay) {
         const pg = mPay[1];
         const credor = mPay[2].trim();
-        const valorStr = mPay[3].replace(/\./g, '').replace(',', '.');
+        const paymentDate = hasDateInLine ? mPay[3] : null;
+        const valorStr = (hasDateInLine ? mPay[4] : mPay[3]).replace(/\./g, '').replace(',', '.');
         const valor = parseFloat(valorStr) || 0;
+        if (paymentDate) currentData = paymentDate;
 
         if (payments[pg]) {
           payments[pg].valor_total += valor;
+          if (!payments[pg].data_contabilizado && paymentDate) {
+            payments[pg].data_contabilizado = paymentDate;
+          }
         } else {
           payments[pg] = {
             siscac_pg: pg,
             credor,
             valor_total: valor,
-            data_contabilizado: currentData,
+            data_contabilizado: paymentDate || currentData,
             comprovante: currentComprovante,
           };
         }
