@@ -115,7 +115,7 @@
   <div class="card">
     <h2>Geração em Lote de SCD (PDF)</h2>
     <label>CSV de Diárias (template do djangoproject)</label>
-    <input type="file" id="diarias-file" accept=".csv" />
+    <input type="file" id="diarias-file" accept=".csv,.xlsx" />
 
     <div class="row2">
       <div>
@@ -133,7 +133,7 @@
 
     <button class="run-btn" id="diarias-btn" onclick="runDiariasScd()">Gerar SCDs em PDF (ZIP)</button>
     <button class="run-btn" style="margin-top:0.6rem;background:#6c757d" onclick="downloadDiariasTemplate()">
-      Baixar Template CSV de Diarias
+      Baixar Template XLSX de Diarias
     </button>
     <div id="diarias-status" class="status-box"></div>
     <div id="diarias-download"></div>
@@ -796,10 +796,32 @@ const DIARIAS_TEMPLATE_HEADER = [
   'TRANSPORTE',
 ];
 function downloadDiariasTemplate() {
-  const line = DIARIAS_TEMPLATE_HEADER.join(',');
-  const csv = '\uFEFF' + line + '\n';
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  triggerDownload('template_diarias.csv', blob);
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS nao carregou. Verifique os arquivos em ./vendor/js');
+    return;
+  }
+  
+  // Criar array de arrays para SheetJS
+  const data = [DIARIAS_TEMPLATE_HEADER];
+  
+  // Criar workbook
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  
+  // Formatar coluna - largura automática
+  ws['!cols'] = DIARIAS_TEMPLATE_HEADER.map(() => ({ wch: 20 }));
+  
+  // Formatar header com fundo azul e fonte branca em negrito
+  for (let i = 0; i < DIARIAS_TEMPLATE_HEADER.length; i++) {
+    const cellRef = XLSX.utils.encode_col(i) + '1';
+    if (!ws[cellRef]) ws[cellRef] = {};
+    ws[cellRef].fill = { fgColor: { rgb: 'FF4472C4' } };
+    ws[cellRef].font = { bold: true, color: { rgb: 'FFFFFFFF' } };
+    ws[cellRef].alignment = { horizontal: 'center', vertical: 'center' };
+  }
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Diarias');
+  XLSX.writeFile(wb, 'template_diarias.xlsx');
 }
 
 function parseCsvSimple(text) {
@@ -1038,18 +1060,28 @@ function buildScdPdfBytes(item) {
   leftText('Objetivo:', marginLeft, objectiveTitleY, 'F2', 11);
   const objectiveLines = wrapTextForPdf(item.objetivo || 'N/A', textWidth, 11);
   let objY = objectiveTitleY - 20;
-  const minTextBottomY = sigY + 70;
-  const maxObjectiveLines = Math.max(1, Math.floor((objY - minTextBottomY) / 14));
-  for (const line of objectiveLines.slice(0, maxObjectiveLines)) {
-    leftText(line, marginLeft, objY, 'F1', 11);
-    objY -= 14;
+  
+  // Minimum space before signature block (60px gap + 60px for signature block itself)
+  const minSigY = 120;
+  const maxObjectiveY = minSigY + 60;
+  let displayedLines = 0;
+  
+  for (const line of objectiveLines) {
+    if (objY - 14 >= maxObjectiveY) {
+      leftText(line, marginLeft, objY, 'F1', 11);
+      objY -= 14;
+      displayedLines++;
+    } else {
+      break;
+    }
   }
 
+  const sigY_dynamic = Math.max(minSigY, objY - 60);
   const sigRightX = pageWidth - marginRight - sigHalf;
-  drawLine(sigRightX - sigHalf, sigY, sigRightX + sigHalf, sigY);
-  centerText('Proponente', sigY - 16, 'F1', 10);
-  centerText(item.nome_proponente || 'N/A', sigY - 32, 'F1', 10);
-  centerText(item.cargo_proponente || 'Cargo nao informado', sigY - 46, 'F1', 10);
+  drawLine(sigRightX - sigHalf, sigY_dynamic, sigRightX + sigHalf, sigY_dynamic);
+  centerText('Proponente', sigY_dynamic - 16, 'F1', 10);
+  centerText(item.nome_proponente || 'N/A', sigY_dynamic - 32, 'F1', 10);
+  centerText(item.cargo_proponente || 'Cargo nao informado', sigY_dynamic - 46, 'F1', 10);
 
   return buildSimplePdf(ops);
 }
@@ -1357,12 +1389,12 @@ async function runDiariasScd() {
   dlDiv.innerHTML = '';
 
   if (!fileInput.files.length) {
-    setStatus('diarias', 'error', 'Selecione um arquivo CSV.');
+    setStatus('diarias', 'error', 'Selecione um arquivo CSV ou XLSX.');
     return;
   }
 
   btn.disabled = true;
-  setStatus('diarias', 'info', 'Lendo CSV e montando PDFs SCD...');
+  setStatus('diarias', 'info', 'Lendo arquivo e montando PDFs SCD...');
 
   try {
     const depCheck = await ensureLibrariesLoaded();
@@ -1375,13 +1407,36 @@ async function runDiariasScd() {
 
     const file = fileInput.files[0];
     const buf = await file.arrayBuffer();
-
-    let text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
-    if (text.includes('\uFFFD')) {
-      text = new TextDecoder('latin1').decode(buf).replace(/^\uFEFF/, '');
+    const filename = file.name.toLowerCase();
+    
+    let parsed;
+    
+    // Detectar tipo de arquivo e processar
+    if (filename.endsWith('.xlsx') || filename.endsWith('.xls')) {
+      // Processar como XLSX
+      const workbook = XLSX.read(buf, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (!rows.length) {
+        throw new Error('Arquivo XLSX vazio.');
+      }
+      
+      // Converter de XLSX para formato CSV para reutilizar o parser
+      const csvLines = rows.map(row => row.map(cell => {
+        const str = String(cell || '').trim();
+        return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+      }).join(','));
+      const csvText = csvLines.join('\n');
+      parsed = parseDiariasCsv(csvText);
+    } else {
+      // Processar como CSV
+      let text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
+      if (text.includes('\uFFFD')) {
+        text = new TextDecoder('latin1').decode(buf).replace(/^\uFEFF/, '');
+      }
+      parsed = parseDiariasCsv(text);
     }
-
-    const parsed = parseDiariasCsv(text);
     if (!parsed.items.length) {
       throw new Error('Nenhuma linha valida para gerar SCD.\n' + parsed.errors.join('\n'));
     }
