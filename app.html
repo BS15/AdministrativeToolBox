@@ -145,16 +145,8 @@
     <label>Nome Beneficiário</label>
     <input type="text" id="diarias-ind-nome-beneficiario" placeholder="NOME_BENEFICIARIO" />
 
-    <div class="row2">
-      <div>
-        <label>Data Solicitação</label>
-        <input type="date" id="diarias-ind-data-solicitacao" />
-      </div>
-      <div>
-        <label>Número SISCAC</label>
-        <input type="text" id="diarias-ind-numero-siscac" placeholder="NUMERO_SISCAC (opcional)" />
-      </div>
-    </div>
+    <label>Data Solicitação</label>
+    <input type="date" id="diarias-ind-data-solicitacao" />
 
     <div class="row2">
       <div>
@@ -167,16 +159,11 @@
       </div>
     </div>
 
-    <div class="row2">
-      <div>
-        <label>Quantidade Diárias</label>
-        <input type="number" id="diarias-ind-quantidade" min="0.1" step="0.1" placeholder="QUANTIDADE_DIARIAS" />
-      </div>
-      <div>
-        <label>Tipo Solicitação</label>
-        <input type="text" id="diarias-ind-tipo-solicitacao" placeholder="INICIAL ou COMPLEMENTACAO" />
-      </div>
-    </div>
+    <label>Tipo Solicitação</label>
+    <select id="diarias-ind-tipo-solicitacao">
+      <option value="INICIAL">INICIAL</option>
+      <option value="COMPLEMENTACAO">COMPLEMENTACAO</option>
+    </select>
 
     <div class="row2">
       <div>
@@ -799,18 +786,15 @@ const DIARIAS_TEMPLATE_HEADER = [
   'DATA_SOLICITACAO',
   'DATA_SAIDA',
   'DATA_RETORNO',
-  'QUANTIDADE_DIARIAS',
   'CIDADE_ORIGEM',
   'CIDADE_DESTINO',
   'OBJETIVO',
   'TIPO_SOLICITACAO',
-  'NUMERO_SISCAC',
   'CARGO_BENEFICIARIO',
   'NOME_PROPONENTE',
   'CARGO_PROPONENTE',
   'TRANSPORTE',
 ];
-
 function downloadDiariasTemplate() {
   const line = DIARIAS_TEMPLATE_HEADER.join(',');
   const csv = '\uFEFF' + line + '\n';
@@ -865,12 +849,10 @@ function parseDiariasCsv(text) {
     'NOME_BENEFICIARIO',
     'DATA_SAIDA',
     'DATA_RETORNO',
-    'QUANTIDADE_DIARIAS',
     'CIDADE_ORIGEM',
     'CIDADE_DESTINO',
     'OBJETIVO',
   ];
-
   const missing = required.filter(c => idx[c] === undefined);
   if (missing.length) {
     return {
@@ -899,18 +881,15 @@ function parseDiariasCsv(text) {
       data_solicitacao: pick(row, 'DATA_SOLICITACAO'),
       data_saida: pick(row, 'DATA_SAIDA'),
       data_retorno: pick(row, 'DATA_RETORNO'),
-      quantidade_diarias: pick(row, 'QUANTIDADE_DIARIAS'),
       cidade_origem: pick(row, 'CIDADE_ORIGEM'),
       cidade_destino: pick(row, 'CIDADE_DESTINO'),
       objetivo: pick(row, 'OBJETIVO'),
       tipo_solicitacao: pick(row, 'TIPO_SOLICITACAO'),
-      numero_siscac: pick(row, 'NUMERO_SISCAC'),
       cargo_beneficiario: pick(row, 'CARGO_BENEFICIARIO'),
       nome_proponente: pick(row, 'NOME_PROPONENTE'),
       cargo_proponente: pick(row, 'CARGO_PROPONENTE'),
       transporte: pick(row, 'TRANSPORTE'),
-    });
-    if (!normalized.ok) {
+    });    if (!normalized.ok) {
       errors.push(`Linha ${lineNum}: ${normalized.error}`);
       continue;
     }
@@ -925,8 +904,6 @@ function normalizeDiariaScdItem(raw) {
   const dataSaida = parseDateBrOrIso(raw.data_saida);
   const dataRetorno = parseDateBrOrIso(raw.data_retorno);
   const dataSolic = parseDateBrOrIso(raw.data_solicitacao) || toIsoToday();
-  const qtdRaw = cleanText(raw.quantidade_diarias).replace(',', '.');
-  const qtd = parseFloat(qtdRaw);
 
   if (!nome) return { ok: false, error: 'NOME_BENEFICIARIO vazio.' };
   if (!dataSaida || !dataRetorno) {
@@ -934,9 +911,6 @@ function normalizeDiariaScdItem(raw) {
   }
   if (dataRetorno < dataSaida) {
     return { ok: false, error: 'DATA_RETORNO nao pode ser anterior a DATA_SAIDA.' };
-  }
-  if (!isFinite(qtd) || qtd <= 0) {
-    return { ok: false, error: 'QUANTIDADE_DIARIAS invalida.' };
   }
 
   return {
@@ -947,12 +921,10 @@ function normalizeDiariaScdItem(raw) {
       data_solicitacao: dataSolic,
       data_saida: dataSaida,
       data_retorno: dataRetorno,
-      quantidade_diarias: String(qtd),
       cidade_origem: cleanText(raw.cidade_origem) || 'N/A',
       cidade_destino: cleanText(raw.cidade_destino) || 'N/A',
       objetivo: cleanText(raw.objetivo) || 'N/A',
       tipo_solicitacao: cleanText(raw.tipo_solicitacao) || 'INICIAL',
-      numero_siscac: cleanText(raw.numero_siscac) || 'N/A',
       cargo_beneficiario: cleanText(raw.cargo_beneficiario) || 'N/A',
       nome_proponente: cleanText(raw.nome_proponente) || 'N/A',
       cargo_proponente: cleanText(raw.cargo_proponente) || 'Cargo nao informado',
@@ -1051,7 +1023,6 @@ function buildScdPdfBytes(item) {
   let y = 550;
   const fields = [
     `Data da Solicitacao: ${toBrDate(item.data_solicitacao)}`,
-    `N. SISCAC: ${item.numero_siscac || 'N/A'}`,
     `Beneficiario: ${item.nome_beneficiario || 'N/A'}`,
     `Cargo do Beneficiario: ${item.cargo_beneficiario || 'N/A'}`,
     `Periodo: ${toBrDate(item.data_saida)} a ${toBrDate(item.data_retorno)}`,
@@ -1063,19 +1034,22 @@ function buildScdPdfBytes(item) {
     y -= 20;
   }
 
-  leftText('Objetivo:', marginLeft, 430, 'F2', 11);
+  const objectiveTitleY = y - 8;
+  leftText('Objetivo:', marginLeft, objectiveTitleY, 'F2', 11);
   const objectiveLines = wrapTextForPdf(item.objetivo || 'N/A', textWidth, 11);
-  let objY = 410;
-  for (const line of objectiveLines.slice(0, 9)) {
+  let objY = objectiveTitleY - 20;
+  const minTextBottomY = sigY + 70;
+  const maxObjectiveLines = Math.max(1, Math.floor((objY - minTextBottomY) / 14));
+  for (const line of objectiveLines.slice(0, maxObjectiveLines)) {
     leftText(line, marginLeft, objY, 'F1', 11);
     objY -= 14;
   }
 
   const sigRightX = pageWidth - marginRight - sigHalf;
-  centerText(item.nome_proponente || 'N/A', sigY + 28, 'F1', 10);
-  centerText(item.cargo_proponente || 'Cargo nao informado', sigY + 14, 'F1', 10);
   drawLine(sigRightX - sigHalf, sigY, sigRightX + sigHalf, sigY);
-  centerText('Proponente', sigY - 14, 'F1', 10);
+  centerText('Proponente', sigY - 16, 'F1', 10);
+  centerText(item.nome_proponente || 'N/A', sigY - 32, 'F1', 10);
+  centerText(item.cargo_proponente || 'Cargo nao informado', sigY - 46, 'F1', 10);
 
   return buildSimplePdf(ops);
 }
@@ -1470,12 +1444,10 @@ async function runDiariaIndividualScd() {
       data_solicitacao: document.getElementById('diarias-ind-data-solicitacao').value,
       data_saida: document.getElementById('diarias-ind-data-saida').value,
       data_retorno: document.getElementById('diarias-ind-data-retorno').value,
-      quantidade_diarias: document.getElementById('diarias-ind-quantidade').value,
       cidade_origem: document.getElementById('diarias-ind-cidade-origem').value,
       cidade_destino: document.getElementById('diarias-ind-cidade-destino').value,
       objetivo: document.getElementById('diarias-ind-objetivo').value,
       tipo_solicitacao: document.getElementById('diarias-ind-tipo-solicitacao').value,
-      numero_siscac: document.getElementById('diarias-ind-numero-siscac').value,
       cargo_beneficiario: document.getElementById('diarias-ind-cargo-beneficiario').value,
       nome_proponente: document.getElementById('diarias-ind-nome-proponente').value,
       cargo_proponente: document.getElementById('diarias-ind-cargo-proponente').value,
