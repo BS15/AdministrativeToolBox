@@ -65,6 +65,7 @@
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('siscac', this)">SISCAC → CSV</button>
   <button class="tab-btn" onclick="switchTab('reinf', this)">EFD-Reinf → ZIP de XMLs</button>
+  <button class="tab-btn" onclick="switchTab('diarias', this)">Diárias Lote → SCD PDF</button>
 </div>
 
 <!-- ── PAINEL SISCAC ───────────────────────────────────────────────── -->
@@ -106,6 +107,116 @@
     <button class="run-btn" id="reinf-btn" onclick="runReinf()">Gerar ZIP de XMLs</button>
     <div id="reinf-status" class="status-box"></div>
     <div id="reinf-download"></div>
+  </div>
+</div>
+
+<!-- ── PAINEL DIÁRIAS (SCD PDF) ─────────────────────────────────────────── -->
+<div id="panel-diarias" class="panel">
+  <div class="card">
+    <h2>Geração em Lote de SCD (PDF)</h2>
+    <label>CSV de Diárias (template do djangoproject)</label>
+    <input type="file" id="diarias-file" accept=".csv" />
+
+    <div class="row2">
+      <div>
+        <label>Proponente (padrão, opcional)</label>
+        <input type="text" id="diarias-proponente" placeholder="Nome do Proponente" />
+      </div>
+      <div>
+        <label>Cargo do Proponente (padrão, opcional)</label>
+        <input type="text" id="diarias-cargo-proponente" placeholder="Cargo nao informado" />
+      </div>
+    </div>
+
+    <label>Transporte (padrão, opcional)</label>
+    <input type="text" id="diarias-transporte" placeholder="N/A" />
+
+    <button class="run-btn" id="diarias-btn" onclick="runDiariasScd()">Gerar SCDs em PDF (ZIP)</button>
+    <button class="run-btn" style="margin-top:0.6rem;background:#6c757d" onclick="downloadDiariasTemplate()">
+      Baixar Template CSV de Diarias
+    </button>
+    <div id="diarias-status" class="status-box"></div>
+    <div id="diarias-download"></div>
+  </div>
+
+  <div class="card">
+    <h2>Gerar SCD Individual (Formulário)</h2>
+
+    <label>Nome Beneficiário</label>
+    <input type="text" id="diarias-ind-nome-beneficiario" placeholder="NOME_BENEFICIARIO" />
+
+    <div class="row2">
+      <div>
+        <label>Data Solicitação</label>
+        <input type="date" id="diarias-ind-data-solicitacao" />
+      </div>
+      <div>
+        <label>Número SISCAC</label>
+        <input type="text" id="diarias-ind-numero-siscac" placeholder="NUMERO_SISCAC (opcional)" />
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label>Data Saída</label>
+        <input type="date" id="diarias-ind-data-saida" />
+      </div>
+      <div>
+        <label>Data Retorno</label>
+        <input type="date" id="diarias-ind-data-retorno" />
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label>Quantidade Diárias</label>
+        <input type="number" id="diarias-ind-quantidade" min="0.1" step="0.1" placeholder="QUANTIDADE_DIARIAS" />
+      </div>
+      <div>
+        <label>Tipo Solicitação</label>
+        <input type="text" id="diarias-ind-tipo-solicitacao" placeholder="INICIAL ou COMPLEMENTACAO" />
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label>Cidade Origem</label>
+        <input type="text" id="diarias-ind-cidade-origem" placeholder="CIDADE_ORIGEM" />
+      </div>
+      <div>
+        <label>Cidade Destino</label>
+        <input type="text" id="diarias-ind-cidade-destino" placeholder="CIDADE_DESTINO" />
+      </div>
+    </div>
+
+    <label>Objetivo</label>
+    <input type="text" id="diarias-ind-objetivo" placeholder="OBJETIVO" />
+
+    <div class="row2">
+      <div>
+        <label>Cargo Beneficiário</label>
+        <input type="text" id="diarias-ind-cargo-beneficiario" placeholder="CARGO_BENEFICIARIO (opcional)" />
+      </div>
+      <div>
+        <label>Transporte</label>
+        <input type="text" id="diarias-ind-transporte" placeholder="TRANSPORTE (opcional)" />
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label>Nome Proponente</label>
+        <input type="text" id="diarias-ind-nome-proponente" placeholder="NOME_PROPONENTE (opcional)" />
+      </div>
+      <div>
+        <label>Cargo Proponente</label>
+        <input type="text" id="diarias-ind-cargo-proponente" placeholder="CARGO_PROPONENTE (opcional)" />
+      </div>
+    </div>
+
+    <button class="run-btn" id="diarias-ind-btn" onclick="runDiariaIndividualScd()">Gerar SCD Individual (PDF)</button>
+    <div id="diarias-ind-status" class="status-box"></div>
+    <div id="diarias-ind-download"></div>
   </div>
 </div>
 
@@ -267,6 +378,37 @@ function normalizeHeader(s) {
   return s;
 }
 
+function cleanText(val) {
+  return String(val || '')
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, '')
+    .trim();
+}
+
+function parseDateBrOrIso(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return s;
+  return null;
+}
+
+function toBrDate(isoDate) {
+  if (!isoDate) return 'N/A';
+  const m = String(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return 'N/A';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function toIsoToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // EFD-Reinf: mapeamento de colunas (portado de _COL_ALIASES)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -348,9 +490,9 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     return (idx !== undefined && idx < row.length) ? row[idx] : null;
   };
 
-  const natureza = String(get('natureza_rendimento') || '').trim();
-  const codigoImposto = String(get('codigo_imposto') || '').trim();
-  const serieRaw = String(get('serie_reinf') || '').trim().toUpperCase();
+  const natureza = cleanText(get('natureza_rendimento'));
+  const codigoImposto = cleanText(get('codigo_imposto'));
+  const serieRaw = cleanText(get('serie_reinf')).toUpperCase();
 
   let serieReinf;
   if (hasSerieColumn) {
@@ -360,7 +502,7 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     serieReinf = inferSerieReinf(natureza);
   }
 
-  const numeroNf = String(get('numero_nf') || '').trim() || `ROW${rowNum}`;
+  const numeroNf = cleanText(get('numero_nf')) || `ROW${rowNum}`;
 
   let valorBruto = parseDecimal(get('valor_bruto') ?? get('base_calculo'));
   let baseCalculo = parseDecimal(get('base_calculo') ?? get('valor_bruto'));
@@ -370,7 +512,7 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
   }
 
   const cnpjEmitente = digitsOnly(get('cnpj_emitente'));
-  const nomeEmitente = String(get('nome_emitente') || '').trim();
+  const nomeEmitente = cleanText(get('nome_emitente'));
 
   // Ignora linhas de rodape/ruido sem dados essenciais.
   if (!cnpjEmitente && !nomeEmitente && !natureza && valorBruto <= 0 && baseCalculo <= 0 && valorRetido <= 0) {
@@ -387,7 +529,7 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     cnpj_emitente:       cnpjEmitente,
     nome_emitente:       nomeEmitente,
     numero_nf:           numeroNf,
-    serie_nf:            String(get('serie_nf') || '').trim(),
+    serie_nf:            cleanText(get('serie_nf')),
     data_emissao:        parseDate(get('data_emissao')),
     valor_bruto:         valorBruto,
     codigo_imposto:      codigoImposto,
@@ -396,8 +538,8 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     base_calculo:        baseCalculo,
     valor_retido:        valorRetido,
     cnpj_beneficiario:   digitsOnly(get('cnpj_beneficiario')),
-    nome_beneficiario:   String(get('nome_beneficiario') || '').trim(),
-    tipo_beneficiario:   String(get('tipo_beneficiario') || 'PJ').trim().toUpperCase(),
+    nome_beneficiario:   cleanText(get('nome_beneficiario')),
+    tipo_beneficiario:   cleanText(get('tipo_beneficiario') || 'PJ').toUpperCase(),
   };
 }
 
@@ -448,12 +590,12 @@ function readCsvText(text) {
         if (inQ && line[i+1] === '"') { cur += '"'; i++; }
         else inQ = !inQ;
       } else if (ch === sep && !inQ) {
-        result.push(cur.trim()); cur = '';
+        result.push(cleanText(cur)); cur = '';
       } else {
         cur += ch;
       }
     }
-    result.push(cur.trim());
+    result.push(cleanText(cur));
     return result;
   };
 
@@ -647,6 +789,304 @@ function buildFechamento(evento, perApur) {
     const ideEvt = addEl(doc, evt, 'ideEvento');
     addEl(doc, ideEvt, 'perApur', perApur);
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Diárias Lote: parser de CSV + gerador SCD PDF (portado de SCDDocument)
+// ═══════════════════════════════════════════════════════════════════════════
+const DIARIAS_TEMPLATE_HEADER = [
+  'NOME_BENEFICIARIO',
+  'DATA_SOLICITACAO',
+  'DATA_SAIDA',
+  'DATA_RETORNO',
+  'QUANTIDADE_DIARIAS',
+  'CIDADE_ORIGEM',
+  'CIDADE_DESTINO',
+  'OBJETIVO',
+  'TIPO_SOLICITACAO',
+  'NUMERO_SISCAC',
+  'CARGO_BENEFICIARIO',
+  'NOME_PROPONENTE',
+  'CARGO_PROPONENTE',
+  'TRANSPORTE',
+];
+
+function downloadDiariasTemplate() {
+  const line = DIARIAS_TEMPLATE_HEADER.join(',');
+  const csv = '\uFEFF' + line + '\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  triggerDownload('template_diarias.csv', blob);
+}
+
+function parseCsvSimple(text) {
+  const sample = text.slice(0, 2048);
+  let sep = ',';
+  for (const c of [';', '\t', '|']) {
+    if ((sample.match(new RegExp('\\' + c, 'g')) || []).length >
+        (sample.match(/,/g) || []).length) {
+      sep = c;
+      break;
+    }
+  }
+
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const parseLine = line => {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === sep && !inQ) {
+        out.push(cleanText(cur));
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cleanText(cur));
+    return out;
+  };
+
+  return lines.map(parseLine).filter(r => r.some(v => v !== ''));
+}
+
+function parseDiariasCsv(text) {
+  const rows = parseCsvSimple(text);
+  if (!rows.length) return { items: [], errors: ['CSV vazio.'] };
+
+  const header = rows[0].map(h => normalizeHeader(h).toUpperCase());
+  const idx = {};
+  header.forEach((h, i) => { idx[h] = i; });
+
+  const required = [
+    'NOME_BENEFICIARIO',
+    'DATA_SAIDA',
+    'DATA_RETORNO',
+    'QUANTIDADE_DIARIAS',
+    'CIDADE_ORIGEM',
+    'CIDADE_DESTINO',
+    'OBJETIVO',
+  ];
+
+  const missing = required.filter(c => idx[c] === undefined);
+  if (missing.length) {
+    return {
+      items: [],
+      errors: [
+        'Cabecalho invalido. Colunas obrigatorias ausentes: ' + missing.join(', '),
+      ],
+    };
+  }
+
+  const pick = (row, col) => {
+    const i = idx[col];
+    return i === undefined || i >= row.length ? '' : cleanText(row[i]);
+  };
+
+  const errors = [];
+  const items = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const lineNum = i + 1;
+    const row = rows[i];
+
+    const normalized = normalizeDiariaScdItem({
+      lineNum,
+      nome_beneficiario: pick(row, 'NOME_BENEFICIARIO'),
+      data_solicitacao: pick(row, 'DATA_SOLICITACAO'),
+      data_saida: pick(row, 'DATA_SAIDA'),
+      data_retorno: pick(row, 'DATA_RETORNO'),
+      quantidade_diarias: pick(row, 'QUANTIDADE_DIARIAS'),
+      cidade_origem: pick(row, 'CIDADE_ORIGEM'),
+      cidade_destino: pick(row, 'CIDADE_DESTINO'),
+      objetivo: pick(row, 'OBJETIVO'),
+      tipo_solicitacao: pick(row, 'TIPO_SOLICITACAO'),
+      numero_siscac: pick(row, 'NUMERO_SISCAC'),
+      cargo_beneficiario: pick(row, 'CARGO_BENEFICIARIO'),
+      nome_proponente: pick(row, 'NOME_PROPONENTE'),
+      cargo_proponente: pick(row, 'CARGO_PROPONENTE'),
+      transporte: pick(row, 'TRANSPORTE'),
+    });
+    if (!normalized.ok) {
+      errors.push(`Linha ${lineNum}: ${normalized.error}`);
+      continue;
+    }
+    items.push(normalized.item);
+  }
+
+  return { items, errors };
+}
+
+function normalizeDiariaScdItem(raw) {
+  const nome = cleanText(raw.nome_beneficiario);
+  const dataSaida = parseDateBrOrIso(raw.data_saida);
+  const dataRetorno = parseDateBrOrIso(raw.data_retorno);
+  const dataSolic = parseDateBrOrIso(raw.data_solicitacao) || toIsoToday();
+  const qtdRaw = cleanText(raw.quantidade_diarias).replace(',', '.');
+  const qtd = parseFloat(qtdRaw);
+
+  if (!nome) return { ok: false, error: 'NOME_BENEFICIARIO vazio.' };
+  if (!dataSaida || !dataRetorno) {
+    return { ok: false, error: 'DATA_SAIDA/DATA_RETORNO invalidas. Use DD/MM/AAAA ou AAAA-MM-DD.' };
+  }
+  if (dataRetorno < dataSaida) {
+    return { ok: false, error: 'DATA_RETORNO nao pode ser anterior a DATA_SAIDA.' };
+  }
+  if (!isFinite(qtd) || qtd <= 0) {
+    return { ok: false, error: 'QUANTIDADE_DIARIAS invalida.' };
+  }
+
+  return {
+    ok: true,
+    item: {
+      lineNum: raw.lineNum || 1,
+      nome_beneficiario: nome,
+      data_solicitacao: dataSolic,
+      data_saida: dataSaida,
+      data_retorno: dataRetorno,
+      quantidade_diarias: String(qtd),
+      cidade_origem: cleanText(raw.cidade_origem) || 'N/A',
+      cidade_destino: cleanText(raw.cidade_destino) || 'N/A',
+      objetivo: cleanText(raw.objetivo) || 'N/A',
+      tipo_solicitacao: cleanText(raw.tipo_solicitacao) || 'INICIAL',
+      numero_siscac: cleanText(raw.numero_siscac) || 'N/A',
+      cargo_beneficiario: cleanText(raw.cargo_beneficiario) || 'N/A',
+      nome_proponente: cleanText(raw.nome_proponente) || 'N/A',
+      cargo_proponente: cleanText(raw.cargo_proponente) || 'Cargo nao informado',
+      transporte: cleanText(raw.transporte) || 'N/A',
+    },
+  };
+}
+
+function pdfEscape(text) {
+  const s = String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ');
+  return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function estimateTextWidth(text, fontSize) {
+  return String(text || '').length * (fontSize * 0.52);
+}
+
+function wrapTextForPdf(text, maxWidth, fontSize) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+
+  for (const word of words) {
+    const test = cur ? `${cur} ${word}` : word;
+    if (estimateTextWidth(test, fontSize) <= maxWidth) {
+      cur = test;
+    } else {
+      if (cur) lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : ['N/A'];
+}
+
+function buildSimplePdf(contentOps) {
+  const stream = contentOps.join('\n');
+  const streamLength = new TextEncoder().encode(stream).length;
+
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>',
+    `<< /Length ${streamLength} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+
+  for (let i = 0; i < objects.length; i++) {
+    offsets.push(new TextEncoder().encode(pdf).length);
+    pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefPos = new TextEncoder().encode(pdf).length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (let i = 1; i < offsets.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+
+  return new Uint8Array(new TextEncoder().encode(pdf));
+}
+
+function buildScdPdfBytes(item) {
+  const marginLeft = 70;
+  const marginRight = 70;
+  const pageWidth = 595;
+  const textWidth = pageWidth - marginLeft - marginRight;
+  const sigHalf = 130;
+  const sigY = 200;
+  const ops = [];
+
+  const centerText = (text, y, font = 'F1', size = 11) => {
+    const w = estimateTextWidth(text, size);
+    const x = Math.max(20, (pageWidth - w) / 2);
+    ops.push(`BT /${font} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(text)}) Tj ET`);
+  };
+
+  const leftText = (text, x, y, font = 'F1', size = 11) => {
+    ops.push(`BT /${font} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(text)}) Tj ET`);
+  };
+
+  const drawLine = (x1, y1, x2, y2) => {
+    ops.push(`${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  };
+
+  centerText('SOLICITACAO DE CONCESSAO DE DIARIAS - SCD', 620, 'F2', 14);
+
+  let y = 550;
+  const fields = [
+    `Data da Solicitacao: ${toBrDate(item.data_solicitacao)}`,
+    `N. SISCAC: ${item.numero_siscac || 'N/A'}`,
+    `Beneficiario: ${item.nome_beneficiario || 'N/A'}`,
+    `Cargo do Beneficiario: ${item.cargo_beneficiario || 'N/A'}`,
+    `Periodo: ${toBrDate(item.data_saida)} a ${toBrDate(item.data_retorno)}`,
+    `Trajeto: ${item.cidade_origem || 'N/A'} para ${item.cidade_destino || 'N/A'}`,
+    `Transporte: ${item.transporte || 'N/A'}`,
+  ];
+  for (const f of fields) {
+    leftText(f, marginLeft, y, 'F1', 11);
+    y -= 20;
+  }
+
+  leftText('Objetivo:', marginLeft, 430, 'F2', 11);
+  const objectiveLines = wrapTextForPdf(item.objetivo || 'N/A', textWidth, 11);
+  let objY = 410;
+  for (const line of objectiveLines.slice(0, 9)) {
+    leftText(line, marginLeft, objY, 'F1', 11);
+    objY -= 14;
+  }
+
+  const sigRightX = pageWidth - marginRight - sigHalf;
+  centerText(item.nome_proponente || 'N/A', sigY + 28, 'F1', 10);
+  centerText(item.cargo_proponente || 'Cargo nao informado', sigY + 14, 'F1', 10);
+  drawLine(sigRightX - sigHalf, sigY, sigRightX + sigHalf, sigY);
+  centerText('Proponente', sigY - 14, 'F1', 10);
+
+  return buildSimplePdf(ops);
+}
+
+function sanitizeFilename(s) {
+  return String(s || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'arquivo';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -928,6 +1368,143 @@ async function runReinf() {
     a.click();
   } catch (e) {
     setStatus('reinf','error','Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runDiariasScd() {
+  const fileInput = document.getElementById('diarias-file');
+  const nomeProponenteDefault = cleanText(document.getElementById('diarias-proponente').value);
+  const cargoProponenteDefault = cleanText(document.getElementById('diarias-cargo-proponente').value);
+  const transporteDefault = cleanText(document.getElementById('diarias-transporte').value);
+  const btn = document.getElementById('diarias-btn');
+  const dlDiv = document.getElementById('diarias-download');
+  dlDiv.innerHTML = '';
+
+  if (!fileInput.files.length) {
+    setStatus('diarias', 'error', 'Selecione um arquivo CSV.');
+    return;
+  }
+
+  btn.disabled = true;
+  setStatus('diarias', 'info', 'Lendo CSV e montando PDFs SCD...');
+
+  try {
+    const depCheck = await ensureLibrariesLoaded();
+    if (!depCheck.ok) {
+      throw new Error(
+        'Dependências ausentes: ' + depCheck.missing.join(', ') +
+        '. Caminhos testados: ' + depCheck.attempted.join(', ')
+      );
+    }
+
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+
+    let text = new TextDecoder('utf-8').decode(buf).replace(/^\uFEFF/, '');
+    if (text.includes('\uFFFD')) {
+      text = new TextDecoder('latin1').decode(buf).replace(/^\uFEFF/, '');
+    }
+
+    const parsed = parseDiariasCsv(text);
+    if (!parsed.items.length) {
+      throw new Error('Nenhuma linha valida para gerar SCD.\n' + parsed.errors.join('\n'));
+    }
+
+    const items = parsed.items.map(it => ({
+      ...it,
+      nome_proponente: it.nome_proponente === 'N/A' && nomeProponenteDefault ? nomeProponenteDefault : it.nome_proponente,
+      cargo_proponente: it.cargo_proponente === 'Cargo nao informado' && cargoProponenteDefault ? cargoProponenteDefault : it.cargo_proponente,
+      transporte: it.transporte === 'N/A' && transporteDefault ? transporteDefault : it.transporte,
+    }));
+
+    const zip = new JSZip();
+    items.forEach((item, i) => {
+      const pdfBytes = buildScdPdfBytes(item);
+      const nome = sanitizeFilename(item.nome_beneficiario || `linha_${item.lineNum}`);
+      const data = (item.data_saida || '').replace(/-/g, '');
+      const fileName = `SCD_${String(i + 1).padStart(3, '0')}_${nome}_${data || 'sem_data'}.pdf`;
+      zip.file(fileName, pdfBytes);
+    });
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const outName = file.name.replace(/\.csv$/i, '') + '_SCD_PDFs.zip';
+
+    const msgs = [];
+    msgs.push(`✓ ${items.length} SCD(s) gerada(s) em PDF.`);
+    if (parsed.errors.length) {
+      msgs.push('');
+      msgs.push(`Linhas ignoradas por erro: ${parsed.errors.length}`);
+      msgs.push(...parsed.errors.slice(0, 10));
+      if (parsed.errors.length > 10) msgs.push('...');
+    }
+    setStatus('diarias', 'ok', msgs.join('\n'));
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = outName;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${outName}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('diarias', 'error', 'Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runDiariaIndividualScd() {
+  const btn = document.getElementById('diarias-ind-btn');
+  const dlDiv = document.getElementById('diarias-ind-download');
+  dlDiv.innerHTML = '';
+
+  btn.disabled = true;
+  setStatus('diarias-ind', 'info', 'Gerando SCD individual...');
+
+  try {
+    const raw = {
+      lineNum: 1,
+      nome_beneficiario: document.getElementById('diarias-ind-nome-beneficiario').value,
+      data_solicitacao: document.getElementById('diarias-ind-data-solicitacao').value,
+      data_saida: document.getElementById('diarias-ind-data-saida').value,
+      data_retorno: document.getElementById('diarias-ind-data-retorno').value,
+      quantidade_diarias: document.getElementById('diarias-ind-quantidade').value,
+      cidade_origem: document.getElementById('diarias-ind-cidade-origem').value,
+      cidade_destino: document.getElementById('diarias-ind-cidade-destino').value,
+      objetivo: document.getElementById('diarias-ind-objetivo').value,
+      tipo_solicitacao: document.getElementById('diarias-ind-tipo-solicitacao').value,
+      numero_siscac: document.getElementById('diarias-ind-numero-siscac').value,
+      cargo_beneficiario: document.getElementById('diarias-ind-cargo-beneficiario').value,
+      nome_proponente: document.getElementById('diarias-ind-nome-proponente').value,
+      cargo_proponente: document.getElementById('diarias-ind-cargo-proponente').value,
+      transporte: document.getElementById('diarias-ind-transporte').value,
+    };
+
+    const normalized = normalizeDiariaScdItem(raw);
+    if (!normalized.ok) {
+      throw new Error(normalized.error);
+    }
+
+    const item = normalized.item;
+    const pdfBytes = buildScdPdfBytes(item);
+    const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const nome = sanitizeFilename(item.nome_beneficiario || 'beneficiario');
+    const data = (item.data_saida || '').replace(/-/g, '') || 'sem_data';
+    const outName = `SCD_${nome}_${data}.pdf`;
+
+    setStatus('diarias-ind', 'ok', '✓ SCD individual gerada com sucesso.');
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(pdfBlob);
+    a.download = outName;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${outName}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('diarias-ind', 'error', 'Erro: ' + e.message);
   } finally {
     btn.disabled = false;
   }

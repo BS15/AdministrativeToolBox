@@ -20,6 +20,8 @@ Tudo que nao participa desse fluxo foi removido.
 |---|---|---|
 | SISCAC -> CSV | Relatorio PDF do SISCAC | CSV de pagamentos |
 | EFD-Reinf -> ZIP | Planilha `.xlsx` ou `.csv` | ZIP com XMLs |
+| Diarias Lote -> SCD PDF | CSV de diarias | ZIP com PDFs SCD |
+| Diaria Individual -> SCD PDF | Formulario web | PDF SCD |
 
 ## Como usar
 
