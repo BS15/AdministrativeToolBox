@@ -105,6 +105,9 @@
     </div>
 
     <button class="run-btn" id="reinf-btn" onclick="runReinf()">Gerar ZIP de XMLs</button>
+    <button class="run-btn" style="margin-top:0.6rem;background:#6c757d" onclick="downloadReinfTemplate()">
+      Baixar Template XLSX EFD-Reinf
+    </button>
     <div id="reinf-status" class="status-box"></div>
     <div id="reinf-download"></div>
   </div>
@@ -316,7 +319,7 @@ function digitsOnly(s) {
 
 function fmtDec(val) {
   const n = parseFloat(val) || 0;
-  return n.toFixed(2);
+  return n.toFixed(2).replace('.', ',');
 }
 
 function parseDecimal(val) {
@@ -341,6 +344,19 @@ function parseDecimal(val) {
 
 function parseDate(val) {
   if (!val) return null;
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    // Suporta serial de data do Excel (sistema 1900).
+    if (val > 20000 && val < 80000) {
+      const millis = Math.round((val - 25569) * 86400 * 1000);
+      const d = new Date(millis);
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+  }
   if (val instanceof Date) {
     const y = val.getFullYear();
     const m = String(val.getMonth() + 1).padStart(2, '0');
@@ -355,6 +371,13 @@ function parseDate(val) {
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m2) return s;
   return null;
+}
+
+function parseBooleanLike(val) {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val !== 0;
+  const s = cleanText(val).toLowerCase();
+  return ['1', 'true', 'sim', 's', 'yes', 'y', 'x'].includes(s);
 }
 
 // Normaliza header: minúsculas, sem acentos, sem espaços duplos
@@ -420,7 +443,86 @@ const COL_ALIASES = {
   cnpj_beneficiario:   ['cnpj beneficiário','cnpj beneficiario','cnpj_beneficiario','cpf/cnpj beneficiário'],
   nome_beneficiario:   ['nome beneficiário','nome beneficiario','nome_beneficiario','beneficiário','beneficiario'],
   tipo_beneficiario:   ['tipo beneficiário','tipo beneficiario','tipo_beneficiario','pf/pj','tipo'],
+  is_rendimento_isento:['is_rendimento_isento','is rendimento isento','rendimento isento','isento','imune'],
+  tp_isencao:          ['tpisencao','tpisencao','tp_isencao','tp isencao','tipo isencao','tipo de isencao'],
+  desc_isencao:        ['descisencao','desc_isencao','desc isencao','fundamentacao legal','fundamentação legal'],
 };
+
+const REINF_TEMPLATE_HEADER = [
+  'cnpj_emitente',
+  'nome_emitente',
+  'numero_nf',
+  'serie_nf',
+  'data_emissao',
+  'valor_bruto',
+  'base_calculo',
+  'valor_retido',
+  'codigo_imposto',
+  'serie_reinf',
+  'natureza_rendimento',
+  'is_rendimento_isento',
+  'tp_isencao',
+  'desc_isencao',
+  'cnpj_beneficiario',
+  'nome_beneficiario',
+  'tipo_beneficiario',
+];
+
+const REINF_TEMPLATE_SAMPLE = [
+  '12345678000199',
+  'PRESTADOR EXEMPLO LTDA',
+  '12345',
+  '1',
+  '2026-01-15',
+  '1000,00',
+  '1000,00',
+  '15,00',
+  '5952',
+  'S4000',
+  '15001',
+  'false',
+  '',
+  '',
+  '00987654000177',
+  'BENEFICIARIO EXEMPLO SA',
+  'PJ',
+];
+
+const REINF_MIN_REQUIRED_KEYS = [
+  'cnpj_emitente',
+  'numero_nf',
+  'data_emissao',
+];
+
+const REINF_VALUE_KEYS = [
+  'valor_retido',
+  'retencao_agregada',
+  'base_calculo',
+  'valor_bruto',
+];
+
+function validateReinfColumnMapping(colMap) {
+  const missing = REINF_MIN_REQUIRED_KEYS.filter(k => !(k in colMap));
+  if (!REINF_VALUE_KEYS.some(k => k in colMap)) {
+    missing.push('valor_retido/base_calculo/valor_bruto');
+  }
+  return missing;
+}
+
+function downloadReinfTemplate() {
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS nao carregou. Verifique os arquivos em ./vendor/js');
+    return;
+  }
+
+  const data = [REINF_TEMPLATE_HEADER, REINF_TEMPLATE_SAMPLE];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = REINF_TEMPLATE_HEADER.map((h) => ({ wch: Math.max(14, h.length + 2) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'EFD_Reinf');
+  XLSX.writeFile(wb, 'template_efd_reinf.xlsx');
+}
 
 function resolveColumns(headerRow) {
   const normalized = headerRow.map(normalizeHeader);
@@ -480,13 +582,21 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
   const natureza = cleanText(get('natureza_rendimento'));
   const codigoImposto = cleanText(get('codigo_imposto'));
   const serieRaw = cleanText(get('serie_reinf')).toUpperCase();
+  const tpIsencaoRaw = cleanText(get('tp_isencao'));
+  const descIsencao = cleanText(get('desc_isencao'));
+  let isRendimentoIsento = parseBooleanLike(get('is_rendimento_isento'));
+
+  // Se vier metadado de isencao, trata como pagamento isento/imune mesmo sem flag explicita.
+  if (!isRendimentoIsento && (tpIsencaoRaw || descIsencao)) {
+    isRendimentoIsento = true;
+  }
 
   let serieReinf;
   if (hasSerieColumn) {
     if (serieRaw !== 'S2000' && serieRaw !== 'S4000') return null;
     serieReinf = serieRaw;
   } else {
-    serieReinf = inferSerieReinf(natureza);
+    serieReinf = isRendimentoIsento ? 'S4000' : inferSerieReinf(natureza);
   }
 
   const numeroNf = cleanText(get('numero_nf')) || `ROW${rowNum}`;
@@ -507,9 +617,17 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
   }
 
   // Linhas com codigo '-' representam itens sem retencao (somente controle interno).
-  if (valorRetido <= 0 && codigoImposto === '-') {
+  if (valorRetido <= 0 && codigoImposto === '-' && !isRendimentoIsento) {
     return null;
   }
+
+  // Para pagamentos isentos, usa natureza padrao quando nao vier preenchida.
+  let naturezaRendimento = natureza;
+  if (isRendimentoIsento && !naturezaValida(naturezaRendimento)) {
+    naturezaRendimento = '15001';
+  }
+
+  const tpIsencao = tpIsencaoRaw ? tpIsencaoRaw.toUpperCase() : null;
 
   return {
     _source_row:         rowNum,
@@ -521,9 +639,12 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     valor_bruto:         valorBruto,
     codigo_imposto:      codigoImposto,
     serie_reinf:         serieReinf,
-    natureza_rendimento: natureza,
+    natureza_rendimento: naturezaRendimento,
     base_calculo:        baseCalculo,
     valor_retido:        valorRetido,
+    is_rendimento_isento:isRendimentoIsento,
+    tp_isencao:          tpIsencao,
+    desc_isencao:        descIsencao,
     cnpj_beneficiario:   digitsOnly(get('cnpj_beneficiario')),
     nome_beneficiario:   cleanText(get('nome_beneficiario')),
     tipo_beneficiario:   cleanText(get('tipo_beneficiario') || 'PJ').toUpperCase(),
@@ -544,6 +665,10 @@ function readXlsxSheet(arrayBuffer) {
 
   const header = rows[headerIndex].map(h => h === null ? '' : String(h));
   const colMap = resolveColumns(header);
+  const missingCols = validateReinfColumnMapping(colMap);
+  if (missingCols.length) {
+    throw new Error('Cabecalho incompleto. Colunas obrigatorias ausentes: ' + missingCols.join(', '));
+  }
   const hasSerieColumn = 'serie_reinf' in colMap;
 
   const records = [];
@@ -595,6 +720,10 @@ function readCsvText(text) {
   }
 
   const colMap = resolveColumns(rows[headerIndex]);
+  const missingCols = validateReinfColumnMapping(colMap);
+  if (missingCols.length) {
+    throw new Error('Cabecalho incompleto. Colunas obrigatorias ausentes: ' + missingCols.join(', '));
+  }
   const hasSerieColumn = 'serie_reinf' in colMap;
 
   const records = [];
@@ -627,8 +756,17 @@ function validateRecords(records) {
     if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
     if (rec.serie_reinf === 'S4000' && !naturezaValida(rec.natureza_rendimento))
       issues.push(`Linha ${row}: Natureza Rendimento inválida (${rec.natureza_rendimento}) para S4000.`);
-    if (rec.valor_retido <= 0)
+
+    if (rec.is_rendimento_isento) {
+      if (rec.serie_reinf !== 'S4000') {
+        issues.push(`Linha ${row}: Rendimento isento deve estar na série S4000.`);
+      }
+      if (rec.valor_bruto <= 0 && rec.base_calculo <= 0) {
+        issues.push(`Linha ${row}: Informe valor bruto/base para rendimento isento.`);
+      }
+    } else if (rec.valor_retido <= 0) {
       issues.push(`Linha ${row}: Valor Retido deve ser positivo.`);
+    }
   });
   return issues;
 }
@@ -685,19 +823,66 @@ function addEl(doc, parent, tag, text) {
   return el;
 }
 
+function makeReinfEventId() {
+  // XSD exige formato: ID + 34 digitos numericos.
+  const now = new Date();
+  const ts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+    String(now.getMilliseconds()).padStart(3, '0'),
+  ].join('');
+  let digits = ts;
+  while (digits.length < 34) {
+    digits += String(Math.floor(Math.random() * 10));
+  }
+  return 'ID' + digits.slice(0, 34);
+}
+
+function inferIsenImun(records) {
+  if (!records.some(r => r.is_rendimento_isento)) return null;
+  const hasImune = records.some(r => /imun/i.test(String(r.desc_isencao || '')));
+  return hasImune ? '3' : '2';
+}
+
 function buildR1000(cnpj, razaoSocial) {
-  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtInfoContri/v2_01_01', (doc, root) => {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtInfoContribuinte/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtInfoContri');
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'tpAmb', '2');
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
     const ide = addEl(doc, evt, 'ideContri');
     addEl(doc, ide, 'tpInsc', '1');
     addEl(doc, ide, 'nrInsc', cnpj);
-    addEl(doc, ide, 'nmRazao', razaoSocial);
+
+    const infoContri = addEl(doc, evt, 'infoContri');
+    const inclusao = addEl(doc, infoContri, 'inclusao');
+    const idePeriodo = addEl(doc, inclusao, 'idePeriodo');
+    const now = new Date();
+    const iniValid = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    addEl(doc, idePeriodo, 'iniValid', iniValid);
+
+    const infoCadastro = addEl(doc, inclusao, 'infoCadastro');
+    // Valores padrao para permitir geracao local; podem ser ajustados em versoes futuras.
+    addEl(doc, infoCadastro, 'classTrib', '99');
+    addEl(doc, infoCadastro, 'indEscrituracao', '1');
+    addEl(doc, infoCadastro, 'indDesoneracao', '0');
+    addEl(doc, infoCadastro, 'indAcordoIsenMulta', '0');
+    const contato = addEl(doc, infoCadastro, 'contato');
+    addEl(doc, contato, 'nmCtt', razaoSocial || 'N/A');
+    addEl(doc, contato, 'cpfCtt', '00000000000');
   });
 }
 
 function buildR2010(cnpjContrib, cnpjPrestador, records, month, year) {
-  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtServTom/v2_01_01', (doc, root) => {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtTomadorServicos/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtServTom');
+    evt.setAttribute('id', makeReinfEventId());
     const ideEvt = addEl(doc, evt, 'ideEvento');
     addEl(doc, ideEvt, 'indRetif', '1');
     addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2,'0')}`);
@@ -705,15 +890,18 @@ function buildR2010(cnpjContrib, cnpjPrestador, records, month, year) {
     addEl(doc, ideEvt, 'procEmi', '1');
     addEl(doc, ideEvt, 'verProc', '1.0');
 
-    const ideContrib = addEl(doc, evt, 'ideContrib');
-    addEl(doc, ideContrib, 'tpInsc', '1');
-    addEl(doc, ideContrib, 'nrInsc', cnpjContrib);
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
 
-    const ideEstab = addEl(doc, evt, 'ideEstab');
-    addEl(doc, ideEstab, 'tpInsc', '1');
-    addEl(doc, ideEstab, 'nrInsc', cnpjContrib);
+    const infoServTom = addEl(doc, evt, 'infoServTom');
+    const ideEstabObra = addEl(doc, infoServTom, 'ideEstabObra');
+    addEl(doc, ideEstabObra, 'tpInscEstab', '1');
+    addEl(doc, ideEstabObra, 'nrInscEstab', cnpjContrib);
+    addEl(doc, ideEstabObra, 'indObra', '0');
 
-    const detEvt = addEl(doc, ideEstab, 'detEvt');
+    const idePrestServ = addEl(doc, ideEstabObra, 'idePrestServ');
+    addEl(doc, idePrestServ, 'cnpjPrestador', cnpjPrestador);
 
     // Group by NF
     const nfGroups = {};
@@ -723,23 +911,35 @@ function buildR2010(cnpjContrib, cnpjPrestador, records, month, year) {
       nfGroups[key].push(rec);
     }
 
+    const totalBruto = records.reduce((s, r) => s + (r.valor_bruto || 0), 0);
+    const totalBase = records.reduce((s, r) => s + (r.base_calculo || 0), 0);
+    const totalRet = records.reduce((s, r) => s + (r.valor_retido || 0), 0);
+    addEl(doc, idePrestServ, 'vlrTotalBruto', fmtDec(totalBruto));
+    addEl(doc, idePrestServ, 'vlrTotalBaseRet', fmtDec(totalBase));
+    addEl(doc, idePrestServ, 'vlrTotalRetPrinc', fmtDec(totalRet));
+    addEl(doc, idePrestServ, 'indCPRB', '0');
+
     for (const [, nfRecs] of Object.entries(nfGroups)) {
-      const nfSeq = addEl(doc, detEvt, 'nfSeq');
-      addEl(doc, nfSeq, 'nrNF', nfRecs[0].numero_nf);
-      addEl(doc, nfSeq, 'dtEmiNF', nfRecs[0].data_emissao || '');
-      addEl(doc, nfSeq, 'vrBruto', fmtDec(nfRecs[0].valor_bruto));
-      const detRet = addEl(doc, nfSeq, 'detRet');
+      const nfs = addEl(doc, idePrestServ, 'nfs');
+      addEl(doc, nfs, 'serie', (nfRecs[0].serie_nf || '1').slice(0, 5));
+      addEl(doc, nfs, 'numDocto', nfRecs[0].numero_nf);
+      addEl(doc, nfs, 'dtEmissaoNF', nfRecs[0].data_emissao || `${year}-${String(month).padStart(2, '0')}-01`);
+      addEl(doc, nfs, 'vlrBruto', fmtDec(nfRecs[0].valor_bruto));
+
+      const infoTpServ = addEl(doc, nfs, 'infoTpServ');
+      addEl(doc, infoTpServ, 'tpServico', '000000001');
       const baseTotal = nfRecs.reduce((s, r) => s + r.base_calculo, 0);
       const retTotal  = nfRecs.reduce((s, r) => s + r.valor_retido, 0);
-      addEl(doc, detRet, 'vrBaseRet', fmtDec(baseTotal));
-      addEl(doc, detRet, 'vrRet', fmtDec(retTotal));
+      addEl(doc, infoTpServ, 'vlrBaseRet', fmtDec(baseTotal));
+      addEl(doc, infoTpServ, 'vlrRetencao', fmtDec(retTotal));
     }
   });
 }
 
 function buildR4020(cnpjContrib, cnpjPrestador, records, month, year) {
-  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtRetPJ/v2_01_01', (doc, root) => {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evt4020PagtoBeneficiarioPJ/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtRetPJ');
+    evt.setAttribute('id', makeReinfEventId());
     const ideEvt = addEl(doc, evt, 'ideEvento');
     addEl(doc, ideEvt, 'indRetif', '1');
     addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2,'0')}`);
@@ -747,25 +947,50 @@ function buildR4020(cnpjContrib, cnpjPrestador, records, month, year) {
     addEl(doc, ideEvt, 'procEmi', '1');
     addEl(doc, ideEvt, 'verProc', '1.0');
 
-    const ideContrib = addEl(doc, evt, 'ideContrib');
-    addEl(doc, ideContrib, 'tpInsc', '1');
-    addEl(doc, ideContrib, 'nrInsc', cnpjContrib);
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
 
-    const idePJ = addEl(doc, evt, 'idePJ');
-    addEl(doc, idePJ, 'cnpjPrestador', cnpjPrestador);
+    const ideEstab = addEl(doc, evt, 'ideEstab');
+    addEl(doc, ideEstab, 'tpInscEstab', '1');
+    addEl(doc, ideEstab, 'nrInscEstab', cnpjContrib);
 
-    // Group by natureza
+    const ideBenef = addEl(doc, ideEstab, 'ideBenef');
+    addEl(doc, ideBenef, 'cnpjBenef', cnpjPrestador);
+    const nmBenef = (records[0] && (records[0].nome_beneficiario || records[0].nome_emitente)) || '';
+    if (nmBenef) addEl(doc, ideBenef, 'nmBenef', nmBenef.slice(0, 70));
+    const isenImun = inferIsenImun(records);
+    if (isenImun) addEl(doc, ideBenef, 'isenImun', isenImun);
+
+    // Group by natureza para compor idePgto/infoPgto no layout v2_01_02.
     const groups = {};
     for (const rec of records) {
-      if (!groups[rec.natureza_rendimento]) groups[rec.natureza_rendimento] = [];
-      groups[rec.natureza_rendimento].push(rec);
+      const natureza = naturezaValida(rec.natureza_rendimento) ? rec.natureza_rendimento : '15001';
+      if (!groups[natureza]) {
+        groups[natureza] = [];
+      }
+      groups[natureza].push(rec);
     }
 
-    for (const [natureza, natRecs] of Object.entries(groups)) {
-      const detPag = addEl(doc, idePJ, 'detPag');
-      addEl(doc, detPag, 'natRend', natureza);
-      addEl(doc, detPag, 'vrBaseRet', fmtDec(natRecs.reduce((s, r) => s + r.base_calculo, 0)));
-      addEl(doc, detPag, 'vrRet',     fmtDec(natRecs.reduce((s, r) => s + r.valor_retido, 0)));
+    for (const [natureza, recsNat] of Object.entries(groups)) {
+      const idePgto = addEl(doc, ideBenef, 'idePgto');
+      addEl(doc, idePgto, 'natRend', natureza);
+
+      for (const rec of recsNat) {
+        const infoPgto = addEl(doc, idePgto, 'infoPgto');
+        const dtFg = rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
+        addEl(doc, infoPgto, 'dtFG', dtFg);
+
+        const vlrBruto = rec.valor_bruto > 0 ? rec.valor_bruto : rec.base_calculo;
+        if (vlrBruto > 0) addEl(doc, infoPgto, 'vlrBruto', fmtDec(vlrBruto));
+
+        // Em pagamento tributado, escreve bloco de retencoes no formato oficial.
+        if (!rec.is_rendimento_isento && (rec.base_calculo > 0 || rec.valor_retido > 0)) {
+          const retencoes = addEl(doc, infoPgto, 'retencoes');
+          if (rec.base_calculo > 0) addEl(doc, retencoes, 'vlrBaseIR', fmtDec(rec.base_calculo));
+          if (rec.valor_retido > 0) addEl(doc, retencoes, 'vlrIR', fmtDec(rec.valor_retido));
+        }
+      }
     }
   });
 }
@@ -775,6 +1000,42 @@ function buildFechamento(evento, perApur) {
     const evt = addEl(doc, root, evento);
     const ideEvt = addEl(doc, evt, 'ideEvento');
     addEl(doc, ideEvt, 'perApur', perApur);
+  });
+}
+
+function buildR2099Fechamento(cnpjContrib, perApur) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtFechamento/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtFechaEvPer');
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'perApur', perApur);
+    addEl(doc, ideEvt, 'tpAmb', '2');
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+
+    const infoFech = addEl(doc, evt, 'infoFech');
+    addEl(doc, infoFech, 'evtServTm', 'S');
+  });
+}
+
+function buildR4099Fechamento(cnpjContrib, perApur) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evt4099FechamentoDirf/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtFech');
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'perApur', perApur);
+    addEl(doc, ideEvt, 'tpAmb', '2');
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+
+    const infoFech = addEl(doc, evt, 'infoFech');
+    addEl(doc, infoFech, 'fechRet', '1');
   });
 }
 
@@ -1128,14 +1389,14 @@ function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, 
       buildR2010(cnpj, prest, recs, month, year);
   }
   if (Object.keys(inssByPrestador).length)
-    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildFechamento('evtFechaEvPer', perApur);
+    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildR2099Fechamento(cnpj, perApur);
 
   for (const [prest, recs] of Object.entries(federalByPrestador)) {
     xmls[`Federais_R4020/R4020_CNPJ_${prest}_${year}${String(month).padStart(2,'0')}.xml`] =
       buildR4020(cnpj, prest, recs, month, year);
   }
   if (Object.keys(federalByPrestador).length)
-    xmls['Federais_R4020/R4099_Fechamento.xml'] = buildFechamento('evtFechaEvPer', perApur);
+    xmls['Federais_R4020/R4099_Fechamento.xml'] = buildR4099Fechamento(cnpj, perApur);
 
   return xmls;
 }
