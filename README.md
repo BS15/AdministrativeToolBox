@@ -37,3 +37,7 @@ Para distribuir a aplicacao, envie:
 
 - `app.html`
 - pasta `vendor/js/`
+
+## Manual EFD-Reinf
+
+- Consulte o manual completo em `MANUAL_EFD_REINF.md`.
