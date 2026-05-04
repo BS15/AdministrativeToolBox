@@ -15,6 +15,24 @@
     header h1 { font-size: 1.25rem; font-weight: 600; }
     header p  { font-size: 0.8rem; opacity: 0.75; margin-top: 0.2rem; }
     .tabs { display: flex; gap: 0; background: #002244; padding: 0 2rem; }
+    .standalone-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem 2rem;
+      background: #e6edf6;
+      border-bottom: 1px solid #d4dce8;
+    }
+    .standalone-links a {
+      font-size: 0.82rem;
+      text-decoration: none;
+      color: #003366;
+      border: 1px solid #b7c8dd;
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      background: #fff;
+    }
+    .standalone-links a:hover { background: #f2f7ff; }
     .tab-btn {
       padding: 0.6rem 1.4rem;
       border: none; background: transparent; color: #aac4e0;
@@ -53,6 +71,11 @@
     }
     a.download-link:hover { background: #146c43; }
     footer { text-align: center; color: #888; font-size: 0.75rem; padding: 2rem; }
+    body.standalone .tabs { display: none; }
+    body.standalone .standalone-links { display: none; }
+    body.standalone header p { display: none; }
+    body.standalone .panel { max-width: 900px; margin-top: 1.25rem; }
+    body.standalone footer { padding-top: 1rem; }
   </style>
 </head>
 <body>
@@ -61,6 +84,12 @@
   <h1>AdministrativeToolBox</h1>
   <p>Roda 100% no navegador · sem instalação · sem servidor</p>
 </header>
+
+<div class="standalone-links">
+  <a href="./payments-report-extraction.html">Standalone: Payments Report Extraction</a>
+  <a href="./efd-reinf.html">Standalone: EFD-Reinf</a>
+  <a href="./diarias.html">Standalone: Diarias</a>
+</div>
 
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('siscac', this)">SISCAC → CSV</button>
@@ -244,11 +273,56 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // UI helpers
 // ═══════════════════════════════════════════════════════════════════════════
-function switchTab(name, btn) {
+const APP_NAMES = ['siscac', 'reinf', 'diarias'];
+const APP_TITLES = {
+  siscac: 'Payments Report Extraction (SISCAC)',
+  reinf: 'EFD-Reinf XML Generator',
+  diarias: 'Diarias SCD Generator',
+};
+
+function parseHashParams() {
+  return new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+}
+
+function setHashApp(name, standalone) {
+  const params = parseHashParams();
+  params.set('app', name);
+  if (standalone) {
+    params.set('standalone', '1');
+  } else {
+    params.delete('standalone');
+  }
+  history.replaceState(null, '', `#${params.toString()}`);
+}
+
+function switchTab(name, btn, options = {}) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+
+  if (!options.skipHash) {
+    const standalone = parseHashParams().get('standalone') === '1';
+    setHashApp(name, standalone);
+  }
+}
+
+function applyStandaloneLayout(activeAppName) {
+  const standalone = parseHashParams().get('standalone') === '1';
+  document.body.classList.toggle('standalone', standalone);
+
+  const h1 = document.querySelector('header h1');
+  if (!h1) return;
+  h1.textContent = standalone ? (APP_TITLES[activeAppName] || 'AdministrativeToolBox') : 'AdministrativeToolBox';
+}
+
+function initializeAppFromHash() {
+  const params = parseHashParams();
+  const requested = params.get('app');
+  const appName = APP_NAMES.includes(requested) ? requested : 'siscac';
+  const btn = document.querySelector(`.tab-btn[onclick*="'${appName}'"]`);
+  switchTab(appName, btn, { skipHash: true });
+  applyStandaloneLayout(appName);
 }
 
 function setStatus(prefix, type, msg) {
@@ -2092,6 +2166,8 @@ async function runDiariaIndividualScd() {
 
 // Aviso se bibliotecas locais não carregarem
 window.addEventListener('load', async () => {
+  initializeAppFromHash();
+
   const depCheck = await ensureLibrariesLoaded();
   if (!depCheck.ok) {
     document.body.insertAdjacentHTML('afterbegin',
@@ -2102,6 +2178,8 @@ window.addEventListener('load', async () => {
       </div>`);
   }
 });
+
+window.addEventListener('hashchange', initializeAppFromHash);
 </script>
 </body>
 </html>
