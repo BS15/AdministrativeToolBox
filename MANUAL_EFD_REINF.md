@@ -106,10 +106,19 @@ Exemplo de saida:
 | `nome_emitente` | Recomendado | Nome do emitente para referencia e apoio. | `PRESTADOR EXEMPLO LTDA` |
 | `numero_nf` | Sim | Numero da nota/documento da linha. | `12345` |
 | `serie_nf` | Recomendado | Serie da NF. Se vazio, o sistema usa padrao na montagem do XML. | `1` |
+| `tp_servico` | Condicional (S2000) | Codigo do tipo de servico (9 digitos), usado no fluxo de servicos tomados (S2000/R-2010). | `000000001` |
 | `data_emissao` | Sim | Data da nota/pagamento (conforme processo interno). | `2026-01-15` |
 | `valor_bruto` | Condicional | Valor bruto da operacao. Pode ser usado como fallback de base/isencao. | `1000,00` |
 | `base_calculo` | Condicional | Base de calculo da retencao/rendimento. | `1000,00` |
+| `base_agreg` | Opcional | Base das retencoes agregadas (quando houver tributacao agregada). | `1000,00` |
+| `base_csll` | Opcional | Base de calculo da CSLL. | `1000,00` |
+| `base_cofins` | Opcional | Base de calculo da Cofins. | `1000,00` |
+| `base_pis` | Opcional | Base de calculo do PIS/Pasep. | `1000,00` |
 | `valor_retido` | Condicional | Valor retido na linha. Em linha tributada deve ser positivo. | `15,00` |
+| `valor_ret_agreg` | Opcional | Valor retido em formato agregado (sem detalhamento por tributo). | `15,00` |
+| `valor_ret_csll` | Opcional | Valor retido de CSLL. | `5,00` |
+| `valor_ret_cofins` | Opcional | Valor retido de Cofins. | `6,00` |
+| `valor_ret_pis` | Opcional | Valor retido de PIS/Pasep. | `4,00` |
 | `codigo_imposto` | Recomendado | Codigo de imposto/receita utilizado no controle. | `5952` |
 | `serie_reinf` | Recomendado | Define fluxo: `S2000` (INSS) ou `S4000` (Federais). | `S4000` |
 | `natureza_rendimento` | Obrigatoria para S4000 | Natureza de rendimento com 5 digitos. | `15001` |
