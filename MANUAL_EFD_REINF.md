@@ -109,12 +109,14 @@ Exemplo de saida:
 | `tp_servico` | Condicional (S2000) | Codigo do tipo de servico (9 digitos), usado no fluxo de servicos tomados (S2000/R-2010). | `000000001` |
 | `data_emissao` | Sim | Data da nota/pagamento (conforme processo interno). | `2026-01-15` |
 | `valor_bruto` | Condicional | Valor bruto da operacao. Pode ser usado como fallback de base/isencao. | `1000,00` |
-| `base_calculo` | Condicional | Base de calculo da retencao/rendimento. | `1000,00` |
+| `base_ir` | Condicional | Base do IR individual (mapeia para `vlrBaseIR` no R-4020). | `1000,00` |
+| `base_calculo` | Condicional (alias) | Alias aceito para `base_ir` por compatibilidade. | `1000,00` |
 | `base_agreg` | Opcional | Base das retencoes agregadas (quando houver tributacao agregada). | `1000,00` |
 | `base_csll` | Opcional | Base de calculo da CSLL. | `1000,00` |
 | `base_cofins` | Opcional | Base de calculo da Cofins. | `1000,00` |
 | `base_pis` | Opcional | Base de calculo do PIS/Pasep. | `1000,00` |
-| `valor_retido` | Condicional | Valor retido na linha. Em linha tributada deve ser positivo. | `15,00` |
+| `valor_ret_ir` | Condicional | Valor do IR retido individual (mapeia para `vlrIR` no R-4020). Em linha tributada deve ser positivo. | `15,00` |
+| `valor_retido` | Condicional (alias) | Alias aceito para `valor_ret_ir` por compatibilidade. | `15,00` |
 | `valor_ret_agreg` | Opcional | Valor retido em formato agregado (sem detalhamento por tributo). | `15,00` |
 | `valor_ret_csll` | Opcional | Valor retido de CSLL. | `5,00` |
 | `valor_ret_cofins` | Opcional | Valor retido de Cofins. | `6,00` |
@@ -141,7 +143,7 @@ Exemplo de saida:
 
 1. `serie_reinf = S4000`
 2. `natureza_rendimento` com 5 digitos
-3. `base_calculo` e/ou `valor_retido`
+3. `base_ir` e/ou `valor_ret_ir` (tambem aceita aliases `base_calculo`/`valor_retido`)
 
 #### Linha Federais isenta/imune (S4000)
 
@@ -159,7 +161,7 @@ Causa: faltam colunas minimas reconhecidas.
 Como corrigir:
 
 1. Use o template baixado pela propria tela.
-2. Garanta no minimo: `cnpj_emitente`, `numero_nf`, `data_emissao` e alguma coluna de valor (`valor_retido`, `base_calculo` ou `valor_bruto`).
+2. Garanta no minimo: `cnpj_emitente`, `numero_nf`, `data_emissao` e alguma coluna de valor (`valor_ret_ir`/`valor_retido`, `base_ir`/`base_calculo` ou `valor_bruto`).
 
 ### 9.2 "Natureza Rendimento invalida para S4000"
 
