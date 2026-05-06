@@ -550,6 +550,7 @@ const COL_ALIASES = {
   serie_nf:            ['série nf','serie nf','serie_nf','série da nf'],
   tp_servico:          ['tp servico','tp_servico','tipo servico','tipo de servico','tpservico'],
   data_emissao:        ['data emissão','data emissao','data_emissao','emissão','emissao','data pagto'],
+  data_pagamento:      ['data pagamento','data_pagamento','data pgto','dt pagamento','dt pgto'],
   valor_bruto:         ['valor bruto','valor_bruto','vr bruto','bruto','valor tributável','valor tributavel'],
   codigo_imposto:      ['código imposto','codigo imposto','codigo_imposto','código de receita','código',
                         'cod. receita (siscac)','cod receita (siscac)','cod receita','cód. receita (siscac)'],
@@ -587,6 +588,7 @@ const REINF_TEMPLATE_HEADER = [
   'serie_nf',
   'tp_servico',
   'data_emissao',
+  'data_pagamento',
   'valor_bruto',
   'base_ir',
   'base_agreg',
@@ -616,6 +618,7 @@ const REINF_TEMPLATE_SAMPLE = [
   '1',
   '000000001',
   '2026-01-15',
+  '2026-01-20',
   '1000,00',
   '1000,00',
   '',
@@ -641,7 +644,11 @@ const REINF_TEMPLATE_SAMPLE = [
 const REINF_MIN_REQUIRED_KEYS = [
   'cnpj_emitente',
   'numero_nf',
+];
+
+const REINF_DATE_KEYS = [
   'data_emissao',
+  'data_pagamento',
 ];
 
 const REINF_VALUE_KEYS = [
@@ -653,6 +660,9 @@ const REINF_VALUE_KEYS = [
 
 function validateReinfColumnMapping(colMap) {
   const missing = REINF_MIN_REQUIRED_KEYS.filter(k => !(k in colMap));
+  if (!REINF_DATE_KEYS.some(k => k in colMap)) {
+    missing.push('data_emissao/data_pagamento');
+  }
   if (!REINF_VALUE_KEYS.some(k => k in colMap)) {
     missing.push('valor_retido/base_calculo/valor_bruto');
   }
@@ -794,6 +804,7 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     serie_nf:            cleanText(get('serie_nf')),
     tp_servico:          tpServico,
     data_emissao:        parseDate(get('data_emissao')),
+    data_pagamento:      parseDate(get('data_pagamento') ?? get('data_emissao')),
     valor_bruto:         valorBruto,
     codigo_imposto:      codigoImposto,
     serie_reinf:         serieReinf,
@@ -930,6 +941,14 @@ function validateRecords(records) {
 
     if (rec.serie_reinf === 'S2000' && !tpServicoValido(rec.tp_servico)) {
       issues.push(`Linha ${row}: tp_servico inválido para S2000 (use 9 dígitos).`);
+    }
+
+    if (rec.serie_reinf === 'S2000' && !rec.data_emissao) {
+      issues.push(`Linha ${row}: Data de Emissao obrigatoria para S2000/R-2010.`);
+    }
+
+    if (rec.serie_reinf === 'S4000' && !(rec.data_pagamento || rec.data_emissao)) {
+      issues.push(`Linha ${row}: Data de Pagamento obrigatoria para S4000 (dtFG).`);
     }
 
     if (rec.is_rendimento_isento) {
@@ -1201,7 +1220,7 @@ function buildR4020(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eve
 
       for (const rec of recsNat) {
         const infoPgto = addEl(doc, idePgto, 'infoPgto');
-        const dtFg = rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
+        const dtFg = rec.data_pagamento || rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
         addEl(doc, infoPgto, 'dtFG', dtFg);
 
         const vlrBruto = rec.valor_bruto > 0 ? rec.valor_bruto : rec.base_calculo;

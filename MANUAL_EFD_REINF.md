@@ -100,36 +100,42 @@ Exemplo de saida:
 
 ### 8.1 Colunas principais
 
-| Coluna | Obrigatoria | Uso | Exemplo |
+Na coluna "Obrigatoriedade por serie/evento", o texto distingue:
+
+1. o que e obrigatorio no layout/XML do evento;
+2. o que e obrigatorio para uso desta ferramenta/template.
+
+| Coluna | Obrigatoriedade por serie/evento | Uso | Exemplo |
 |---|---|---|---|
-| `cnpj_emitente` | Sim | CNPJ do emitente/prestador relacionado a linha. Somente numeros. | `12345678000199` |
-| `nome_emitente` | Recomendado | Nome do emitente para referencia e apoio. | `PRESTADOR EXEMPLO LTDA` |
-| `numero_nf` | Sim | Numero da nota/documento da linha. | `12345` |
-| `serie_nf` | Recomendado | Serie da NF. Se vazio, o sistema usa padrao na montagem do XML. | `1` |
-| `tp_servico` | Condicional (S2000) | Codigo do tipo de servico (9 digitos), usado no fluxo de servicos tomados (S2000/R-2010). | `000000001` |
-| `data_emissao` | Sim | Data da nota/pagamento (conforme processo interno). | `2026-01-15` |
-| `valor_bruto` | Condicional | Valor bruto da operacao. Pode ser usado como fallback de base/isencao. | `1000,00` |
-| `base_ir` | Condicional | Base do IR individual (mapeia para `vlrBaseIR` no R-4020). | `1000,00` |
-| `base_calculo` | Condicional (alias) | Alias aceito para `base_ir` por compatibilidade. | `1000,00` |
-| `base_agreg` | Opcional | Base das retencoes agregadas (quando houver tributacao agregada). | `1000,00` |
-| `base_csll` | Opcional | Base de calculo da CSLL. | `1000,00` |
-| `base_cofins` | Opcional | Base de calculo da Cofins. | `1000,00` |
-| `base_pis` | Opcional | Base de calculo do PIS/Pasep. | `1000,00` |
-| `valor_ret_ir` | Condicional | Valor do IR retido individual (mapeia para `vlrIR` no R-4020). Em linha tributada deve ser positivo. | `15,00` |
-| `valor_retido` | Condicional (alias) | Alias aceito para `valor_ret_ir` por compatibilidade. | `15,00` |
-| `valor_ret_agreg` | Opcional | Valor retido em formato agregado (sem detalhamento por tributo). | `15,00` |
-| `valor_ret_csll` | Opcional | Valor retido de CSLL. | `5,00` |
-| `valor_ret_cofins` | Opcional | Valor retido de Cofins. | `6,00` |
-| `valor_ret_pis` | Opcional | Valor retido de PIS/Pasep. | `4,00` |
-| `codigo_imposto` | Recomendado | Codigo de imposto/receita utilizado no controle. | `5952` |
-| `serie_reinf` | Recomendado | Define fluxo: `S2000` (INSS) ou `S4000` (Federais). | `S4000` |
-| `natureza_rendimento` | Obrigatoria para S4000 | Natureza de rendimento com 5 digitos. | `15001` |
-| `is_rendimento_isento` | Condicional | Marque quando a linha for isenta/imune. Aceita `true`, `1`, `sim`, `x`, etc. | `false` |
-| `tp_isencao` | Opcional | Tipo de isencao usado no tratamento de linha isenta/imune. | `99` |
-| `desc_isencao` | Opcional | Descricao da isencao/imunidade para apoio e classificacao. | `Imunidade constitucional` |
-| `cnpj_beneficiario` | Opcional | CNPJ do beneficiario informado na linha. | `00987654000177` |
-| `nome_beneficiario` | Opcional | Nome do beneficiario para apoio e montagem de campos de saida. | `BENEFICIARIO EXEMPLO SA` |
-| `tipo_beneficiario` | Opcional | Tipo do beneficiario (`PJ` padrao quando vazio). | `PJ` |
+| `cnpj_emitente` | S2000: obrigatorio na ferramenta. S4000: obrigatorio na ferramenta. | CNPJ do emitente/prestador relacionado a linha. Somente numeros. | `12345678000199` |
+| `nome_emitente` | S2000: opcional. S4000: opcional. | Nome do emitente para referencia e apoio. | `PRESTADOR EXEMPLO LTDA` |
+| `numero_nf` | S2000: obrigatorio na ferramenta e no agrupamento do processamento. S4000: obrigatorio na ferramenta para identificar a linha/documento, embora nao seja campo do XML R-4010/R-4020. | Numero da nota/documento da linha. | `12345` |
+| `serie_nf` | S2000: obrigatorio no XML R-2010; se vazio, a ferramenta preenche `1`. S4000: nao aplicavel ao XML; opcional na ferramenta. | Serie da NF. Se vazio, o sistema usa padrao na montagem do XML S2000. | `1` |
+| `tp_servico` | S2000: obrigatorio. S4000: nao aplicavel. | Codigo do tipo de servico (9 digitos), usado no fluxo de servicos tomados (S2000/R-2010). | `000000001` |
+| `data_emissao` | S2000: obrigatoria e usada em `dtEmissaoNF`. S4000: opcional se `data_pagamento` for informada; pode ser usada como fallback de compatibilidade para `dtFG`. | Data da nota/documento. | `2026-01-15` |
+| `data_pagamento` | S2000: nao aplicavel. S4000: obrigatoria no conceito do evento (`dtFG`); na ferramenta, pode ser suprida por `data_emissao` como fallback. | Data do pagamento para `dtFG` (R-4010/R-4020). | `2026-01-20` |
+| `valor_bruto` | S2000: obrigatorio no XML R-2010. S4000: opcional, mas recomendado quando houver pagamento bruto ou linha isenta/imune. | Valor bruto da operacao. Pode ser usado como fallback de base/isencao. | `1000,00` |
+| `base_ir` | S2000: nao aplicavel. S4000: opcional no XML; usar quando houver base individual de IR. | Base do IR individual (mapeia para `vlrBaseIR` no R-4020). | `1000,00` |
+| `base_calculo` | S2000: obrigatoria para compor `vlrBaseRet`. S4000: alias opcional aceito para `base_ir`. | Base de calculo usada pela ferramenta; em S4000 funciona como alias de `base_ir`. | `1000,00` |
+| `base_agreg` | S2000: nao aplicavel. S4000: opcional. | Base das retencoes agregadas (quando houver tributacao agregada). | `1000,00` |
+| `base_csll` | S2000: nao aplicavel. S4000: opcional. | Base de calculo da CSLL. | `1000,00` |
+| `base_cofins` | S2000: nao aplicavel. S4000: opcional. | Base de calculo da Cofins. | `1000,00` |
+| `base_pis` | S2000: nao aplicavel. S4000: opcional. | Base de calculo do PIS/Pasep. | `1000,00` |
+| `valor_ret_ir` | S2000: nao aplicavel diretamente. S4000: condicional; em linha tributada, deve haver ao menos uma retencao informada (IR, agregada, CSLL, Cofins ou PIS). | Valor do IR retido individual (mapeia para `vlrIR` no R-4020). Em linha tributada deve ser positivo. | `15,00` |
+| `valor_retido` | S2000: obrigatorio para compor `vlrRetencao`. S4000: alias condicional aceito para `valor_ret_ir`. | Campo de retencao usado pela ferramenta; em S4000 funciona como alias de `valor_ret_ir`. | `15,00` |
+| `valor_ret_agreg` | S2000: nao aplicavel. S4000: opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido em formato agregado (sem detalhamento por tributo). | `15,00` |
+| `valor_ret_csll` | S2000: nao aplicavel. S4000: opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de CSLL. | `5,00` |
+| `valor_ret_cofins` | S2000: nao aplicavel. S4000: opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de Cofins. | `6,00` |
+| `valor_ret_pis` | S2000: nao aplicavel. S4000: opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de PIS/Pasep. | `4,00` |
+| `codigo_imposto` | S2000: opcional. S4000: opcional. | Codigo de imposto/receita utilizado no controle. | `5952` |
+| `serie_reinf` | S2000/S4000: recomendada. Se ausente, a ferramenta tenta inferir; para reduzir ambiguidade, preencha explicitamente. | Define fluxo: `S2000` (INSS) ou `S4000` (Federais). | `S4000` |
+| `natureza_rendimento` | S2000: nao aplicavel. S4000: obrigatoria no XML e na ferramenta. | Natureza de rendimento com 5 digitos. | `15001` |
+| `is_rendimento_isento` | S2000: nao aplicavel. S4000: condicional; usar quando a linha for isenta/imune. | Marque quando a linha for isenta/imune. Aceita `true`, `1`, `sim`, `x`, etc. | `false` |
+| `tp_isencao` | S2000: nao aplicavel. S4000: condicional; usar quando houver tratamento de isencao/imunidade que deva ser classificado. | Tipo de isencao usado no tratamento de linha isenta/imune. | `99` |
+| `desc_isencao` | S2000: nao aplicavel. S4000: opcional; ajuda a qualificar a isencao/imunidade e influencia a inferencia de `isenImun`. | Descricao da isencao/imunidade para apoio e classificacao. | `Imunidade constitucional` |
+| `cnpj_beneficiario` | S2000: nao aplicavel. S4000: opcional no estado atual da ferramenta; se vazio, ela usa `cnpj_emitente` para identificar o beneficiario PJ. | CNPJ do beneficiario informado na linha. | `00987654000177` |
+| `nome_beneficiario` | S2000: nao aplicavel. S4000: opcional. | Nome do beneficiario para apoio e montagem de campos de saida. | `BENEFICIARIO EXEMPLO SA` |
+| `tipo_beneficiario` | S2000: nao aplicavel. S4000: opcional no estado atual da ferramenta; mantido para compatibilidade e futura separacao PF/PJ. | Tipo do beneficiario (`PJ` padrao quando vazio). | `PJ` |
 
 ### 8.2 Como preencher por tipo de linha
 
@@ -137,13 +143,15 @@ Exemplo de saida:
 
 1. `serie_reinf = S2000`
 2. Preencher dados de NF e retencao (`valor_retido > 0`)
-3. `natureza_rendimento` nao e foco principal desse fluxo
+3. `data_emissao` e utilizada como `dtEmissaoNF` no R-2010
+4. `natureza_rendimento` nao e foco principal desse fluxo
 
 #### Linha Federais tributada (S4000)
 
 1. `serie_reinf = S4000`
 2. `natureza_rendimento` com 5 digitos
-3. `base_ir` e/ou `valor_ret_ir` (tambem aceita aliases `base_calculo`/`valor_retido`)
+3. Informar `data_pagamento` (usa `data_emissao` como fallback)
+4. `base_ir` e/ou `valor_ret_ir` (tambem aceita aliases `base_calculo`/`valor_retido`)
 
 #### Linha Federais isenta/imune (S4000)
 
@@ -161,7 +169,7 @@ Causa: faltam colunas minimas reconhecidas.
 Como corrigir:
 
 1. Use o template baixado pela propria tela.
-2. Garanta no minimo: `cnpj_emitente`, `numero_nf`, `data_emissao` e alguma coluna de valor (`valor_ret_ir`/`valor_retido`, `base_ir`/`base_calculo` ou `valor_bruto`).
+2. Garanta no minimo: `cnpj_emitente`, `numero_nf`, `data_emissao` ou `data_pagamento`, e alguma coluna de valor (`valor_ret_ir`/`valor_retido`, `base_ir`/`base_calculo` ou `valor_bruto`).
 
 ### 9.2 "Natureza Rendimento invalida para S4000"
 
