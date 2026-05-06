@@ -150,11 +150,27 @@ Exemplo de saida:
 
 ### 8.4 Codigos aceitos para `tp_isencao`
 
-Conforme o XSD oficial da EFD-Reinf (R-4010), os codigos validos para `tp_isencao` sao:
+Conforme o leiaute oficial da EFD-Reinf (R-4010), os codigos validos e suas legendas sao:
 
-`1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 99`
+| Codigo | Legenda oficial |
+|---|---|
+| `1` | Parcela isenta 65 anos |
+| `2` | Diaria de viagem |
+| `3` | Indenizacao e rescisao de contrato, inclusive a titulo de PDV e acidentes de trabalho |
+| `4` | Abono pecuniario |
+| `5` | Valores pagos a titular ou socio de microempresa ou empresa de pequeno porte, exceto pro-labore, alugueis e servicos prestados |
+| `6` | Pensao, aposentadoria ou reforma por molestia grave ou acidente em servico |
+| `7` | Complementacao de aposentadoria, correspondente as contribuicoes efetuadas no periodo de 01/01/1989 a 31/12/1995 |
+| `8` | Ajuda de custo |
+| `10` | Juros de mora recebidos, devidos pelo atraso no pagamento de remuneracao por exercicio de emprego, cargo ou funcao |
+| `11` | Resgate de previdencia complementar por portador de molestia grave |
+| `99` | Outros (especificar) |
 
-Observacao: a legenda textual de cada codigo fica no anexo de tabelas dos leiautes da EFD-Reinf.
+Regras relevantes do leiaute:
+
+1. Os codigos `5`, `6`, `7` e `11` so podem ser informados se o declarante for PJ (`ideContri/tpInsc = 1`).
+2. Se `tp_isencao = 99`, `desc_isencao` torna-se obrigatoria.
+3. Se `tp_isencao = 6`, o campo `dtLaudo` e o campo aplicavel no XML R-4010 para data do laudo.
 
 ### 8.5 Como preencher por tipo de linha
 
