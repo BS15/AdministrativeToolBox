@@ -140,7 +140,7 @@ Exemplo de saida:
 | `base_pis` | Opcional. | Base do PIS/Pasep. | `1000,00` |
 | `valor_ret_pis` | Opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de PIS/Pasep. | `4,00` |
 | `is_rendimento_isento` | Condicional; usar quando a linha for isenta/imune. | Marca pagamentos isentos/imunes. | `false` |
-| `tp_isencao` | Condicional; usar quando houver classificacao de isencao/imunidade. | Tipo de isencao. | `99` |
+| `tp_isencao` | Condicional; usar quando houver classificacao de isencao/imunidade. | Tipo de isencao (codigos aceitos na secao 8.4). | `99` |
 | `desc_isencao` | Opcional; ajuda a qualificar a isencao/imunidade e influencia a inferencia de `isenImun`. | Descricao da isencao/imunidade. | `Imunidade constitucional` |
 | `cnpj_beneficiario` | Opcional no estado atual da ferramenta; se vazio, ela usa `cnpj_emitente` para identificar o beneficiario PJ. | CNPJ do beneficiario. | `00987654000177` |
 | `nome_beneficiario` | Opcional. | Nome do beneficiario. | `BENEFICIARIO EXEMPLO SA` |
@@ -148,7 +148,15 @@ Exemplo de saida:
 | `numero_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Documento de apoio/controle interno. | `12345` |
 | `serie_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Serie do documento de apoio/controle interno. | `1` |
 
-### 8.4 Como preencher por tipo de linha
+### 8.4 Codigos aceitos para `tp_isencao`
+
+Conforme o XSD oficial da EFD-Reinf (R-4010), os codigos validos para `tp_isencao` sao:
+
+`1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 99`
+
+Observacao: a legenda textual de cada codigo fica no anexo de tabelas dos leiautes da EFD-Reinf.
+
+### 8.5 Como preencher por tipo de linha
 
 #### Linha INSS (S2000)
 
