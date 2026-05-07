@@ -15,6 +15,24 @@
     header h1 { font-size: 1.25rem; font-weight: 600; }
     header p  { font-size: 0.8rem; opacity: 0.75; margin-top: 0.2rem; }
     .tabs { display: flex; gap: 0; background: #002244; padding: 0 2rem; }
+    .standalone-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem 2rem;
+      background: #e6edf6;
+      border-bottom: 1px solid #d4dce8;
+    }
+    .standalone-links a {
+      font-size: 0.82rem;
+      text-decoration: none;
+      color: #003366;
+      border: 1px solid #b7c8dd;
+      border-radius: 999px;
+      padding: 0.28rem 0.65rem;
+      background: #fff;
+    }
+    .standalone-links a:hover { background: #f2f7ff; }
     .tab-btn {
       padding: 0.6rem 1.4rem;
       border: none; background: transparent; color: #aac4e0;
@@ -53,6 +71,11 @@
     }
     a.download-link:hover { background: #146c43; }
     footer { text-align: center; color: #888; font-size: 0.75rem; padding: 2rem; }
+    body.standalone .tabs { display: none; }
+    body.standalone .standalone-links { display: none; }
+    body.standalone header p { display: none; }
+    body.standalone .panel { max-width: 900px; margin-top: 1.25rem; }
+    body.standalone footer { padding-top: 1rem; }
   </style>
 </head>
 <body>
@@ -61,6 +84,12 @@
   <h1>AdministrativeToolBox</h1>
   <p>Roda 100% no navegador · sem instalação · sem servidor</p>
 </header>
+
+<div class="standalone-links">
+  <a href="./payments-report-extraction.html">Standalone: Payments Report Extraction</a>
+  <a href="./efd-reinf.html">Standalone: EFD-Reinf</a>
+  <a href="./diarias.html">Standalone: Diarias</a>
+</div>
 
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('siscac', this)">SISCAC → CSV</button>
@@ -72,8 +101,8 @@
 <div id="panel-siscac" class="panel active">
   <div class="card">
     <h2>Extração de Relatório SISCAC</h2>
-    <label>Arquivo PDF do SISCAC</label>
-    <input type="file" id="siscac-file" accept=".pdf" />
+    <label>Arquivo CSV do SISCAC (Relatório de Pagamentos)</label>
+    <input type="file" id="siscac-file" accept=".csv" />
     <button class="run-btn" id="siscac-btn" onclick="runSiscac()">Extrair CSV</button>
     <div id="siscac-status" class="status-box"></div>
     <div id="siscac-download"></div>
@@ -244,11 +273,56 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // UI helpers
 // ═══════════════════════════════════════════════════════════════════════════
-function switchTab(name, btn) {
+const APP_NAMES = ['siscac', 'reinf', 'diarias'];
+const APP_TITLES = {
+  siscac: 'Payments Report Extraction (SISCAC)',
+  reinf: 'EFD-Reinf XML Generator',
+  diarias: 'Diarias SCD Generator',
+};
+
+function parseHashParams() {
+  return new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+}
+
+function setHashApp(name, standalone) {
+  const params = parseHashParams();
+  params.set('app', name);
+  if (standalone) {
+    params.set('standalone', '1');
+  } else {
+    params.delete('standalone');
+  }
+  history.replaceState(null, '', `#${params.toString()}`);
+}
+
+function switchTab(name, btn, options = {}) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+
+  if (!options.skipHash) {
+    const standalone = parseHashParams().get('standalone') === '1';
+    setHashApp(name, standalone);
+  }
+}
+
+function applyStandaloneLayout(activeAppName) {
+  const standalone = parseHashParams().get('standalone') === '1';
+  document.body.classList.toggle('standalone', standalone);
+
+  const h1 = document.querySelector('header h1');
+  if (!h1) return;
+  h1.textContent = standalone ? (APP_TITLES[activeAppName] || 'AdministrativeToolBox') : 'AdministrativeToolBox';
+}
+
+function initializeAppFromHash() {
+  const params = parseHashParams();
+  const requested = params.get('app');
+  const appName = APP_NAMES.includes(requested) ? requested : 'siscac';
+  const btn = document.querySelector(`.tab-btn[onclick*="'${appName}'"]`);
+  switchTab(appName, btn, { skipHash: true });
+  applyStandaloneLayout(appName);
 }
 
 function setStatus(prefix, type, msg) {
@@ -476,6 +550,7 @@ const COL_ALIASES = {
   serie_nf:            ['série nf','serie nf','serie_nf','série da nf'],
   tp_servico:          ['tp servico','tp_servico','tipo servico','tipo de servico','tpservico'],
   data_emissao:        ['data emissão','data emissao','data_emissao','emissão','emissao','data pagto'],
+  data_pagamento:      ['data pagamento','data_pagamento','data pgto','dt pagamento','dt pgto'],
   valor_bruto:         ['valor bruto','valor_bruto','vr bruto','bruto','valor tributável','valor tributavel'],
   codigo_imposto:      ['código imposto','codigo imposto','codigo_imposto','código de receita','código',
                         'cod. receita (siscac)','cod receita (siscac)','cod receita','cód. receita (siscac)'],
@@ -484,13 +559,15 @@ const COL_ALIASES = {
                         'natureza rendimento (cód. ecac)','natureza rendimento (cod. ecac)',
                         'natureza rendimento (cod ecac)','natureza rendimento cod ecac'],
   base_calculo:        ['base de cálculo','base de calculo','base_calculo','rendimento tributável',
-                        'rendimento tributavel','base calculo','valor tributável','valor tributavel'],
+                        'rendimento tributavel','base calculo','valor tributável','valor tributavel',
+                        'base ir','base_ir','base ir individual','vlrbaseir'],
   base_agreg:          ['base agregada','base_agreg','vlrbaseagreg','vlr base agreg','base retencao agregada'],
   base_csll:           ['base csll','base_csll','vlrbasecsll','vlr base csll'],
   base_cofins:         ['base cofins','base_cofins','vlrbasecofins','vlr base cofins'],
   base_pis:            ['base pis','base_pis','base pp','vlrbasepp','vlr base pp','base pis/pasep'],
   valor_retido:        ['valor retido','valor_retido','vr retido','imposto retido',
-                        'retencao individual','retenção individual'],
+                        'retencao individual','retenção individual','valor ret ir','valor_ret_ir',
+                        'ir individual','valor irrf','vlrir'],
   valor_ret_agreg:     ['valor ret agreg','valor_ret_agreg','vlragreg','retencao agregada valor','valor csrf agregado'],
   valor_ret_csll:      ['valor ret csll','valor_ret_csll','vlrcsll','retencao csll'],
   valor_ret_cofins:    ['valor ret cofins','valor_ret_cofins','vlrcofins','retencao cofins'],
@@ -511,13 +588,14 @@ const REINF_TEMPLATE_HEADER = [
   'serie_nf',
   'tp_servico',
   'data_emissao',
+  'data_pagamento',
   'valor_bruto',
-  'base_calculo',
+  'base_ir',
   'base_agreg',
   'base_csll',
   'base_cofins',
   'base_pis',
-  'valor_retido',
+  'valor_ret_ir',
   'valor_ret_agreg',
   'valor_ret_csll',
   'valor_ret_cofins',
@@ -540,6 +618,7 @@ const REINF_TEMPLATE_SAMPLE = [
   '1',
   '000000001',
   '2026-01-15',
+  '2026-01-20',
   '1000,00',
   '1000,00',
   '',
@@ -564,8 +643,11 @@ const REINF_TEMPLATE_SAMPLE = [
 
 const REINF_MIN_REQUIRED_KEYS = [
   'cnpj_emitente',
-  'numero_nf',
+];
+
+const REINF_DATE_KEYS = [
   'data_emissao',
+  'data_pagamento',
 ];
 
 const REINF_VALUE_KEYS = [
@@ -577,6 +659,9 @@ const REINF_VALUE_KEYS = [
 
 function validateReinfColumnMapping(colMap) {
   const missing = REINF_MIN_REQUIRED_KEYS.filter(k => !(k in colMap));
+  if (!REINF_DATE_KEYS.some(k => k in colMap)) {
+    missing.push('data_emissao/data_pagamento');
+  }
   if (!REINF_VALUE_KEYS.some(k => k in colMap)) {
     missing.push('valor_retido/base_calculo/valor_bruto');
   }
@@ -718,6 +803,7 @@ function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
     serie_nf:            cleanText(get('serie_nf')),
     tp_servico:          tpServico,
     data_emissao:        parseDate(get('data_emissao')),
+    data_pagamento:      parseDate(get('data_pagamento') ?? get('data_emissao')),
     valor_bruto:         valorBruto,
     codigo_imposto:      codigoImposto,
     serie_reinf:         serieReinf,
@@ -854,6 +940,14 @@ function validateRecords(records) {
 
     if (rec.serie_reinf === 'S2000' && !tpServicoValido(rec.tp_servico)) {
       issues.push(`Linha ${row}: tp_servico inválido para S2000 (use 9 dígitos).`);
+    }
+
+    if (rec.serie_reinf === 'S2000' && !rec.data_emissao) {
+      issues.push(`Linha ${row}: Data de Emissao obrigatoria para S2000/R-2010.`);
+    }
+
+    if (rec.serie_reinf === 'S4000' && !(rec.data_pagamento || rec.data_emissao)) {
+      issues.push(`Linha ${row}: Data de Pagamento obrigatoria para S4000 (dtFG).`);
     }
 
     if (rec.is_rendimento_isento) {
@@ -1125,7 +1219,7 @@ function buildR4020(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eve
 
       for (const rec of recsNat) {
         const infoPgto = addEl(doc, idePgto, 'infoPgto');
-        const dtFg = rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
+        const dtFg = rec.data_pagamento || rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
         addEl(doc, infoPgto, 'dtFG', dtFg);
 
         const vlrBruto = rec.valor_bruto > 0 ? rec.valor_bruto : rec.base_calculo;
@@ -1578,116 +1672,48 @@ function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SISCAC: extração via pdf.js
+// SISCAC: extração via CSV
 // ═══════════════════════════════════════════════════════════════════════════
 
-function extractLinesFromPdfTextItems(items) {
-  const lines = [];
-  let current = '';
-  let prevY = null;
-
-  for (const item of items) {
-    const str = (item.str || '').trim();
-    const y = Array.isArray(item.transform) ? item.transform[5] : null;
-    const changedLine = prevY !== null && y !== null && Math.abs(y - prevY) > 2;
-
-    if (changedLine && current) {
-      lines.push(current);
-      current = '';
-    }
-
-    if (str) {
-      current = current ? current + ' ' + str : str;
-    }
-
-    if (item.hasEOL && current) {
-      lines.push(current);
-      current = '';
-    }
-
-    if (y !== null) prevY = y;
-  }
-
-  if (current) lines.push(current);
-  return lines;
-}
-
-async function parseSiscacPdf(arrayBuffer) {
-  if (typeof pdfjsLib === 'undefined') {
-    throw new Error('pdf.js não carregou. Verifique se os arquivos locais em ./vendor/js existem.');
-  }
-
-  // Define explicitamente o worker local para evitar resolução incorreta no file://.
-  setPdfWorker(activeLibBase);
-
-  let pdf;
-  try {
-    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  } catch (err) {
-    const msg = String((err && err.message) || err || '');
-    if (/fake worker|pdf\.worker(\.min)?\.js|cannot load script/i.test(msg)) {
-      throw new Error(
-        'Nao foi possivel carregar o worker do PDF.js. ' +
-        'Confirme que o arquivo ./vendor/js/pdf.worker.min.js existe.'
-      );
-    }
-    throw err;
-  }
+function parseSiscacCsv(text) {
+  // Normaliza quebras de linha
+  const lines = text.split(/\r?\n/);
+  const rePg = /^\d{4}PG\d{5}$/;
   const payments = {};
-  let currentComprovante = null;
-  let currentData = null;
 
-  // Padrões (portados de siscac_payments.py)
-  const rePay = /^(20\d{2}PG\d{5})\s+(.*?)\s+(?:20\d{2}NE\d{5}\s+)?\d{5}\/\d{4}\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.,]+)$/;
-  const rePayLegacy = /^(20\d{2}PG\d{5})\s+(.*?)\s+20\d{2}NE\d{5}.*?([\d.,]+)$/;
-  const reData = /\bdata\b[:\s]*([\d]{2}\/[\d]{2}\/[\d]{4})/i;
-  const reComp = /N[o°º]\s*do\s*Comprovante[:\s]*([\d.\-]+)/i;
+  for (const line of lines) {
+    const fields = line.split(';');
+    const pg = (fields[0] || '').trim();
 
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    const lines = extractLinesFromPdfTextItems(content.items || []);
+    // Apenas linhas com número de processo no formato XXXXPGXXXXX
+    if (!rePg.test(pg)) continue;
 
-    for (const line of lines) {
-      const mComp = reComp.exec(line);
-      if (mComp) currentComprovante = mComp[1].replace(/\./g, '');
+    // Ignorar linhas que possuem imposto preenchido (campo 7)
+    const imposto = (fields[7] || '').trim();
+    if (imposto) continue;
 
-      const mData = reData.exec(line);
-      if (mData) currentData = mData[1];
+    const credor = (fields[2] || '').trim();
+    const data   = (fields[15] || '').trim();
+    const valorStr = (fields[17] || '').trim().replace(/\./g, '').replace(',', '.');
+    const valor = parseFloat(valorStr) || 0;
 
-      let mPay = rePay.exec(line);
-      const hasDateInLine = !!mPay;
-      if (!mPay) mPay = rePayLegacy.exec(line);
-      if (mPay) {
-        const pg = mPay[1];
-        const credor = mPay[2].trim();
-        const paymentDate = hasDateInLine ? mPay[3] : null;
-        const valorStr = (hasDateInLine ? mPay[4] : mPay[3]).replace(/\./g, '').replace(',', '.');
-        const valor = parseFloat(valorStr) || 0;
-        if (paymentDate) currentData = paymentDate;
-
-        if (payments[pg]) {
-          payments[pg].valor_total += valor;
-          if (!payments[pg].data_contabilizado && paymentDate) {
-            payments[pg].data_contabilizado = paymentDate;
-          }
-        } else {
-          payments[pg] = {
-            siscac_pg: pg,
-            credor,
-            valor_total: valor,
-            data_contabilizado: paymentDate || currentData,
-            comprovante: currentComprovante,
-          };
-        }
-      }
+    if (payments[pg]) {
+      payments[pg].valor_total += valor;
+    } else {
+      payments[pg] = {
+        siscac_pg: pg,
+        credor,
+        valor_total: valor,
+        data_contabilizado: data,
+      };
     }
   }
+
   return Object.values(payments);
 }
 
 function paymentsToCsv(payments) {
-  const fields = ['credor','siscac_pg','valor_total','data_contabilizado','comprovante'];
+  const fields = ['credor','siscac_pg','valor_total','data_contabilizado'];
   const header = fields.join(',');
   const rows = payments.map(p =>
     fields.map(f => {
@@ -1773,40 +1799,44 @@ async function runSiscac() {
   dlDiv.innerHTML = '';
 
   if (!fileInput.files.length) {
-    setStatus('siscac', 'error', 'Selecione um arquivo PDF.');
+    setStatus('siscac', 'error', 'Selecione um arquivo CSV.');
     return;
   }
 
   btn.disabled = true;
-  setStatus('siscac', 'info', 'Processando PDF...');
+  setStatus('siscac', 'info', 'Processando CSV...');
 
   try {
-    const depCheck = await ensureLibrariesLoaded();
-    if (!depCheck.ok) {
-      throw new Error(
-        'Dependências ausentes: ' + depCheck.missing.join(', ') +
-        '. Caminhos testados: ' + depCheck.attempted.join(', ')
-      );
-    }
-
     const file = fileInput.files[0];
-    const buf = await file.arrayBuffer();
-    const payments = await parseSiscacPdf(buf);
+
+    // Lê o arquivo tentando UTF-8 primeiro; se houver muitos caracteres de substituição,
+    // tenta Windows-1252 (encoding comum em exports do SISCAC).
+    const readAs = (f, enc) => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.onerror = rej;
+      r.readAsText(f, enc);
+    });
+
+    let text = await readAs(file, 'UTF-8');
+    const replacements = (text.match(/\uFFFD/g) || []).length;
+    if (replacements > 5) text = await readAs(file, 'windows-1252');
+
+    const payments = parseSiscacCsv(text);
 
     if (!payments.length) {
       setStatus('siscac', 'error',
-        'Nenhum pagamento encontrado no PDF.\n\n' +
-        'Nota: o parsing do SISCAC foi implementado com base nos padrões ' +
-        'conhecidos do relatório. Se o formato do seu PDF for diferente, ' +
-        'entre em contato para ajustar os padrões de extração.');
+        'Nenhum pagamento encontrado no CSV.\n\n' +
+        'Verifique se o arquivo é o relatório de pagamentos do SISCAC ' +
+        'com linhas no formato XXXXPGXXXXX.');
       return;
     }
 
     const csvText = paymentsToCsv(payments);
     const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
-    const name = file.name.replace(/\.pdf$/i, '') + '_pagamentos.csv';
+    const name = file.name.replace(/\.csv$/i, '') + '_pagamentos.csv';
 
-    setStatus('siscac', 'ok', `✓ ${payments.length} pagamento(s) extraído(s).`);
+    setStatus('siscac', 'ok', `✓ ${payments.length} processo(s) extraído(s).`);
 
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -2092,6 +2122,8 @@ async function runDiariaIndividualScd() {
 
 // Aviso se bibliotecas locais não carregarem
 window.addEventListener('load', async () => {
+  initializeAppFromHash();
+
   const depCheck = await ensureLibrariesLoaded();
   if (!depCheck.ok) {
     document.body.insertAdjacentHTML('afterbegin',
@@ -2102,6 +2134,8 @@ window.addEventListener('load', async () => {
       </div>`);
   }
 });
+
+window.addEventListener('hashchange', initializeAppFromHash);
 </script>
 </body>
 </html>

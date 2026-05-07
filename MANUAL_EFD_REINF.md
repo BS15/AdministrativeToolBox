@@ -98,41 +98,95 @@ Exemplo de saida:
 
 ## 8. Glossario das colunas do template EFD-Reinf
 
-### 8.1 Colunas principais
+### 8.1 Campos comuns
 
-| Coluna | Obrigatoria | Uso | Exemplo |
+| Coluna | Obrigatoriedade por serie/evento | Uso | Exemplo |
 |---|---|---|---|
-| `cnpj_emitente` | Sim | CNPJ do emitente/prestador relacionado a linha. Somente numeros. | `12345678000199` |
-| `nome_emitente` | Recomendado | Nome do emitente para referencia e apoio. | `PRESTADOR EXEMPLO LTDA` |
-| `numero_nf` | Sim | Numero da nota/documento da linha. | `12345` |
-| `serie_nf` | Recomendado | Serie da NF. Se vazio, o sistema usa padrao na montagem do XML. | `1` |
-| `data_emissao` | Sim | Data da nota/pagamento (conforme processo interno). | `2026-01-15` |
-| `valor_bruto` | Condicional | Valor bruto da operacao. Pode ser usado como fallback de base/isencao. | `1000,00` |
-| `base_calculo` | Condicional | Base de calculo da retencao/rendimento. | `1000,00` |
-| `valor_retido` | Condicional | Valor retido na linha. Em linha tributada deve ser positivo. | `15,00` |
-| `codigo_imposto` | Recomendado | Codigo de imposto/receita utilizado no controle. | `5952` |
-| `serie_reinf` | Recomendado | Define fluxo: `S2000` (INSS) ou `S4000` (Federais). | `S4000` |
-| `natureza_rendimento` | Obrigatoria para S4000 | Natureza de rendimento com 5 digitos. | `15001` |
-| `is_rendimento_isento` | Condicional | Marque quando a linha for isenta/imune. Aceita `true`, `1`, `sim`, `x`, etc. | `false` |
-| `tp_isencao` | Opcional | Tipo de isencao usado no tratamento de linha isenta/imune. | `99` |
-| `desc_isencao` | Opcional | Descricao da isencao/imunidade para apoio e classificacao. | `Imunidade constitucional` |
-| `cnpj_beneficiario` | Opcional | CNPJ do beneficiario informado na linha. | `00987654000177` |
-| `nome_beneficiario` | Opcional | Nome do beneficiario para apoio e montagem de campos de saida. | `BENEFICIARIO EXEMPLO SA` |
-| `tipo_beneficiario` | Opcional | Tipo do beneficiario (`PJ` padrao quando vazio). | `PJ` |
+| `cnpj_emitente` | S2000: obrigatorio na ferramenta. S4000: obrigatorio na ferramenta. | CNPJ do emitente/prestador relacionado a linha. Somente numeros. | `12345678000199` |
+| `nome_emitente` | S2000: opcional. S4000: opcional. | Nome do emitente para referencia e apoio. | `PRESTADOR EXEMPLO LTDA` |
+| `serie_reinf` | S2000/S4000: recomendada. Se ausente, a ferramenta tenta inferir; para reduzir ambiguidade, preencha explicitamente. | Define fluxo: `S2000` (INSS) ou `S4000` (Federais). | `S4000` |
+| `codigo_imposto` | S2000: opcional. S4000: opcional. | Codigo de imposto/receita utilizado no controle. | `5952` |
 
-### 8.2 Como preencher por tipo de linha
+### 8.2 Glossario da serie S2000 (R-2010)
+
+| Coluna | Obrigatoriedade na serie S2000 | Uso | Exemplo |
+|---|---|---|---|
+| `numero_nf` | Obrigatoria no contexto do R-2010 (`numDocto`). | Numero da nota/documento fiscal da linha. | `12345` |
+| `serie_nf` | Obrigatoria no XML R-2010; se vier vazia, a ferramenta preenche `1`. | Serie da NF/fatura. | `1` |
+| `tp_servico` | Obrigatoria. | Codigo do tipo de servico (9 digitos). | `000000001` |
+| `data_emissao` | Obrigatoria; usada em `dtEmissaoNF`. | Data de emissao da nota/fatura. | `2026-01-15` |
+| `valor_bruto` | Obrigatoria no XML R-2010. | Valor bruto da nota/documento. | `1000,00` |
+| `base_calculo` | Obrigatoria para compor `vlrBaseRet`. | Base de calculo da retencao previdenciaria. | `1000,00` |
+| `valor_retido` | Obrigatoria para compor `vlrRetencao`. | Valor retido de INSS na linha. | `110,00` |
+
+### 8.3 Glossario da serie S4000 (R-4010/R-4020)
+
+| Coluna | Obrigatoriedade na serie S4000 | Uso | Exemplo |
+|---|---|---|---|
+| `natureza_rendimento` | Obrigatoria no XML e na ferramenta. | Natureza de rendimento com 5 digitos. | `15001` |
+| `data_pagamento` | Obrigatoria no conceito do evento (`dtFG`); na ferramenta, pode ser suprida por `data_emissao` como fallback. | Data do pagamento. | `2026-01-20` |
+| `data_emissao` | Opcional; nao compoe o XML R-4010/R-4020, mas pode ser usada como fallback para `dtFG`. | Data do documento de apoio. | `2026-01-15` |
+| `valor_bruto` | Opcional, mas recomendado quando houver pagamento bruto ou linha isenta/imune. | Valor bruto do pagamento/rendimento. | `1000,00` |
+| `base_ir` | Opcional no XML; usar quando houver base individual de IR. | Base do IR individual. | `1000,00` |
+| `base_calculo` | Alias opcional aceito para `base_ir`. | Alias de base individual de IR na ferramenta. | `1000,00` |
+| `valor_ret_ir` | Condicional; em linha tributada, deve haver ao menos uma retencao informada (IR, agregada, CSLL, Cofins ou PIS). | Valor do IR retido individual. | `15,00` |
+| `valor_retido` | Alias condicional aceito para `valor_ret_ir`. | Alias de retencao individual de IR na ferramenta. | `15,00` |
+| `base_agreg` | Opcional. | Base das retencoes agregadas. | `1000,00` |
+| `valor_ret_agreg` | Opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido agregado. | `15,00` |
+| `base_csll` | Opcional. | Base da CSLL. | `1000,00` |
+| `valor_ret_csll` | Opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de CSLL. | `5,00` |
+| `base_cofins` | Opcional. | Base da Cofins. | `1000,00` |
+| `valor_ret_cofins` | Opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de Cofins. | `6,00` |
+| `base_pis` | Opcional. | Base do PIS/Pasep. | `1000,00` |
+| `valor_ret_pis` | Opcional; pode suprir a exigencia de haver retencao em linha tributada. | Valor retido de PIS/Pasep. | `4,00` |
+| `is_rendimento_isento` | Condicional; usar quando a linha for isenta/imune. | Marca pagamentos isentos/imunes. | `false` |
+| `tp_isencao` | Condicional; usar quando houver classificacao de isencao/imunidade. | Tipo de isencao (codigos aceitos na secao 8.4). | `99` |
+| `desc_isencao` | Opcional; ajuda a qualificar a isencao/imunidade e influencia a inferencia de `isenImun`. | Descricao da isencao/imunidade. | `Imunidade constitucional` |
+| `cnpj_beneficiario` | Opcional no estado atual da ferramenta; se vazio, ela usa `cnpj_emitente` para identificar o beneficiario PJ. | CNPJ do beneficiario. | `00987654000177` |
+| `nome_beneficiario` | Opcional. | Nome do beneficiario. | `BENEFICIARIO EXEMPLO SA` |
+| `tipo_beneficiario` | Opcional no estado atual da ferramenta; mantido para compatibilidade e futura separacao PF/PJ. | Tipo do beneficiario (`PJ` padrao quando vazio). | `PJ` |
+| `numero_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Documento de apoio/controle interno. | `12345` |
+| `serie_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Serie do documento de apoio/controle interno. | `1` |
+
+### 8.4 Codigos aceitos para `tp_isencao`
+
+Conforme o leiaute oficial da EFD-Reinf (R-4010), os codigos validos e suas legendas sao:
+
+| Codigo | Legenda oficial |
+|---|---|
+| `1` | Parcela isenta 65 anos |
+| `2` | Diaria de viagem |
+| `3` | Indenizacao e rescisao de contrato, inclusive a titulo de PDV e acidentes de trabalho |
+| `4` | Abono pecuniario |
+| `5` | Valores pagos a titular ou socio de microempresa ou empresa de pequeno porte, exceto pro-labore, alugueis e servicos prestados |
+| `6` | Pensao, aposentadoria ou reforma por molestia grave ou acidente em servico |
+| `7` | Complementacao de aposentadoria, correspondente as contribuicoes efetuadas no periodo de 01/01/1989 a 31/12/1995 |
+| `8` | Ajuda de custo |
+| `10` | Juros de mora recebidos, devidos pelo atraso no pagamento de remuneracao por exercicio de emprego, cargo ou funcao |
+| `11` | Resgate de previdencia complementar por portador de molestia grave |
+| `99` | Outros (especificar) |
+
+Regras relevantes do leiaute:
+
+1. Os codigos `5`, `6`, `7` e `11` so podem ser informados se o declarante for PJ (`ideContri/tpInsc = 1`).
+2. Se `tp_isencao = 99`, `desc_isencao` torna-se obrigatoria.
+3. Se `tp_isencao = 6`, o campo `dtLaudo` e o campo aplicavel no XML R-4010 para data do laudo.
+
+### 8.5 Como preencher por tipo de linha
 
 #### Linha INSS (S2000)
 
 1. `serie_reinf = S2000`
 2. Preencher dados de NF e retencao (`valor_retido > 0`)
-3. `natureza_rendimento` nao e foco principal desse fluxo
+3. `data_emissao` e utilizada como `dtEmissaoNF` no R-2010
+4. `natureza_rendimento` nao e foco principal desse fluxo
 
 #### Linha Federais tributada (S4000)
 
 1. `serie_reinf = S4000`
 2. `natureza_rendimento` com 5 digitos
-3. `base_calculo` e/ou `valor_retido`
+3. Informar `data_pagamento` (usa `data_emissao` como fallback)
+4. `base_ir` e/ou `valor_ret_ir` (tambem aceita aliases `base_calculo`/`valor_retido`)
 
 #### Linha Federais isenta/imune (S4000)
 
@@ -150,7 +204,8 @@ Causa: faltam colunas minimas reconhecidas.
 Como corrigir:
 
 1. Use o template baixado pela propria tela.
-2. Garanta no minimo: `cnpj_emitente`, `numero_nf`, `data_emissao` e alguma coluna de valor (`valor_retido`, `base_calculo` ou `valor_bruto`).
+2. Garanta no minimo: `cnpj_emitente`, uma coluna de data (`data_emissao` ou `data_pagamento`) e alguma coluna de valor (`valor_ret_ir`/`valor_retido`, `base_ir`/`base_calculo` ou `valor_bruto`).
+3. Para linhas S2000/R-2010, preencha tambem `numero_nf`.
 
 ### 9.2 "Natureza Rendimento invalida para S4000"
 
