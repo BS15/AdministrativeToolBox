@@ -4,10 +4,8 @@ Este projeto pode rodar sem instalacao e sem terminal.
 
 Como abrir
 1. Abra a pasta do projeto.
-2. Clique duas vezes em app.html.
-3. O navegador abrira a interface com duas funcoes:
-   - SISCAC -> CSV
-   - EFD-Reinf -> ZIP de XMLs
+2. Para EFD-Reinf, clique duas vezes em efd-reinf.html.
+3. Para as demais funcoes legadas, use app.html.
 
 Nao precisa
 - Nao precisa instalar Python.

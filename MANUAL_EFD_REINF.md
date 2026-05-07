@@ -23,14 +23,13 @@ A aba EFD-Reinf:
 
 ## 3. Passo a passo rapido
 
-1. Abra `app.html` no navegador.
-2. Acesse a aba **EFD-Reinf -> ZIP de XMLs**.
-3. Clique em **Baixar Template XLSX EFD-Reinf** (recomendado para evitar erro de cabecalho).
-4. Preencha a planilha (ver glossario na secao 8).
-5. Selecione o arquivo no campo de upload.
-6. Informe CNPJ, razao social, mes e ano.
-7. Clique em **Gerar ZIP de XMLs**.
-8. Baixe o arquivo `EFD_Reinf_AAAAMM.zip`.
+1. Abra `efd-reinf.html` no navegador.
+2. Clique em **Baixar Template XLSX EFD-Reinf** (recomendado para evitar erro de cabecalho).
+3. Preencha a planilha (ver glossario na secao 8).
+4. Selecione o arquivo no campo de upload.
+5. Informe CNPJ, razao social, mes e ano.
+6. Clique em **Gerar ZIP de XMLs**.
+7. Baixe o arquivo `EFD_Reinf_AAAAMM.zip`.
 
 ## 4. Como informar INSS (S2000)
 

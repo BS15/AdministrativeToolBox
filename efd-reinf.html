@@ -4,27 +4,1042 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EFD-Reinf XML Generator</title>
+  <script src="./vendor/js/xlsx.full.min.js"></script>
+  <script src="./vendor/js/jszip.min.js"></script>
   <style>
-    html, body { margin: 0; height: 100%; background: #0b1321; color: #d9e4ff; font-family: system-ui, sans-serif; }
-    .topbar {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 1rem; padding: 0.65rem 1rem; background: #111a2f; border-bottom: 1px solid #24314f;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a1a;
     }
-    .title { font-size: 0.9rem; font-weight: 600; }
-    .links a { color: #9fc1ff; text-decoration: none; font-size: 0.82rem; margin-left: 0.9rem; }
-    .frame-wrap { height: calc(100% - 46px); }
-    iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+    header {
+      background: #003366;
+      color: #fff;
+      padding: 1rem 1.5rem;
+    }
+    header h1 { margin: 0; font-size: 1.2rem; }
+    header p { margin: 0.25rem 0 0; font-size: 0.82rem; opacity: 0.8; }
+    .panel {
+      max-width: 920px;
+      margin: 1.3rem auto;
+      padding: 0 1rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    }
+    h2 {
+      margin: 0 0 1rem;
+      color: #003366;
+      font-size: 1rem;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      margin: 0.8rem 0 0.3rem;
+      color: #555;
+    }
+    label:first-of-type { margin-top: 0; }
+    input[type="text"],
+    input[type="number"],
+    input[type="file"],
+    select {
+      width: 100%;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+    }
+    @media (max-width: 760px) {
+      .row2 { grid-template-columns: 1fr; }
+    }
+    button.run-btn {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.65rem;
+      border: none;
+      border-radius: 5px;
+      background: #0055aa;
+      color: #fff;
+      font-size: 0.93rem;
+      cursor: pointer;
+    }
+    button.run-btn:hover { background: #0044cc; }
+    button.run-btn:disabled { background: #aaa; cursor: default; }
+    .status-box {
+      margin-top: 0.9rem;
+      padding: 0.75rem;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      display: none;
+    }
+    .status-box.info { background: #e8f0ff; color: #003; display: block; }
+    .status-box.ok { background: #d4edda; color: #155724; display: block; }
+    .status-box.error { background: #f8d7da; color: #721c24; display: block; }
+    a.download-link {
+      display: inline-block;
+      margin-top: 0.8rem;
+      padding: 0.5rem 1rem;
+      background: #198754;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    a.download-link:hover { background: #146c43; }
+    footer {
+      text-align: center;
+      color: #888;
+      font-size: 0.75rem;
+      padding: 1.2rem;
+    }
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="title">EFD-Reinf XML Generator</div>
-    <div class="links">
-      <a href="./app.html">Abrir monolito</a>
+
+<header>
+  <h1>EFD-Reinf XML Generator</h1>
+  <p>Entrada standalone sem dependência de app monolítico</p>
+</header>
+
+<div class="panel">
+  <div class="card">
+    <h2>Geração de XMLs EFD-Reinf</h2>
+    <label>Planilha de controle (.xlsx ou .csv)</label>
+    <input type="file" id="reinf-file" accept=".xlsx,.csv" />
+
+    <label>CNPJ do Contribuinte (somente números)</label>
+    <input type="text" id="reinf-cnpj" maxlength="18" placeholder="00000000000100" />
+
+    <label>Razão Social</label>
+    <input type="text" id="reinf-razao" placeholder="EMPRESA EXEMPLO S.A." />
+
+    <div class="row2">
+      <div>
+        <label>CPF do Contato R-1000 (11 dígitos)</label>
+        <input type="text" id="reinf-cpf-ctt" maxlength="14" placeholder="00000000000" />
+      </div>
+      <div>
+        <label>Ambiente</label>
+        <select id="reinf-tp-amb">
+          <option value="2" selected>2 - Produção Restrita (Testes)</option>
+          <option value="1">1 - Produção (Real)</option>
+        </select>
+      </div>
     </div>
+
+    <div class="row2">
+      <div>
+        <label>Classificação Tributária (R-1000)</label>
+        <select id="reinf-class-trib">
+          <option value="99" selected>99 - Outros</option>
+          <option value="85">85 - Administração Pública</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label>Mês de Apuração</label>
+        <input type="number" id="reinf-mes" min="1" max="12" placeholder="1-12" />
+      </div>
+      <div>
+        <label>Ano de Apuração</label>
+        <input type="number" id="reinf-ano" min="2020" max="2099" placeholder="2026" />
+      </div>
+    </div>
+
+    <button class="run-btn" id="reinf-btn" onclick="runReinf()">Gerar ZIP de XMLs</button>
+    <button class="run-btn" id="reinf-precheck-btn" style="margin-top:0.6rem;background:#0d6efd" onclick="runReinfPrecheck()">
+      Validar Planilha (Pré-check)
+    </button>
+    <button class="run-btn" style="margin-top:0.6rem;background:#6c757d" onclick="downloadReinfTemplate()">
+      Baixar Template XLSX EFD-Reinf
+    </button>
+    <div id="reinf-status" class="status-box"></div>
+    <div id="reinf-download"></div>
   </div>
-  <div class="frame-wrap">
-    <iframe src="./app.html#app=reinf&standalone=1" title="EFD-Reinf XML Generator"></iframe>
-  </div>
+</div>
+
+<footer>AdministrativeToolBox · EFD-Reinf standalone</footer>
+
+<script>
+function setStatus(prefix, type, msg) {
+  const el = document.getElementById(prefix + '-status');
+  el.className = 'status-box ' + type;
+  el.textContent = msg;
+}
+
+function digitsOnly(s) { return String(s || '').replace(/\D/g, ''); }
+
+function fmtDec(val) {
+  const n = parseFloat(val) || 0;
+  return n.toFixed(2).replace('.', ',');
+}
+
+function parseDecimal(val) {
+  if (val === null || val === undefined || val === '') return 0;
+  let s = String(val).trim();
+  s = s
+    .replace(/R\$/gi, '')
+    .replace(/'/g, '')
+    .replace(/\s/g, '')
+    .replace(/[^0-9,.-]/g, '');
+  if (!s) return 0;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function parseDate(val) {
+  if (!val) return null;
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    if (val > 20000 && val < 80000) {
+      const millis = Math.round((val - 25569) * 86400 * 1000);
+      const d = new Date(millis);
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+  }
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  const m1 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return s;
+  return null;
+}
+
+function parseBooleanLike(val) {
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val !== 0;
+  const s = cleanText(val).toLowerCase();
+  return ['1', 'true', 'sim', 's', 'yes', 'y', 'x'].includes(s);
+}
+
+function isValidCpf(cpf) {
+  const s = digitsOnly(cpf);
+  if (!/^\d{11}$/.test(s)) return false;
+  if (/^(\d)\1{10}$/.test(s)) return false;
+
+  const calcDigit = (base, factor) => {
+    let sum = 0;
+    for (let i = 0; i < base.length; i++) sum += parseInt(base[i], 10) * (factor - i);
+    const mod = (sum * 10) % 11;
+    return mod === 10 ? 0 : mod;
+  };
+
+  const d1 = calcDigit(s.slice(0, 9), 10);
+  const d2 = calcDigit(s.slice(0, 9) + String(d1), 11);
+  return s === s.slice(0, 9) + String(d1) + String(d2);
+}
+
+function normalizeHeader(s) {
+  s = String(s || '').trim().toLowerCase();
+  s = s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  s = s.replace(/\s+/g, ' ');
+  return s;
+}
+
+function cleanText(val) {
+  return String(val || '').replace(/[\u200B-\u200D\uFEFF\u2060]/g, '').trim();
+}
+
+const COL_ALIASES = {
+  cnpj_emitente: ['cnpj emitente','cnpj_emitente','cnpj prestador','cnpj do prestador','cnpj'],
+  nome_emitente: ['nome emitente','nome_emitente','razao social','razão social','prestador','abreviatura'],
+  numero_nf: ['numero nf','número nf','numero_nf','nf','número da nf','nota fiscal'],
+  serie_nf: ['série nf','serie nf','serie_nf','série da nf'],
+  tp_servico: ['tp servico','tp_servico','tipo servico','tipo de servico','tpservico'],
+  data_emissao: ['data emissão','data emissao','data_emissao','emissão','emissao','data pagto'],
+  data_pagamento: ['data pagamento','data_pagamento','data pgto','dt pagamento','dt pgto'],
+  valor_bruto: ['valor bruto','valor_bruto','vr bruto','bruto','valor tributável','valor tributavel'],
+  codigo_imposto: ['código imposto','codigo imposto','codigo_imposto','código de receita','código', 'cod. receita (siscac)','cod receita (siscac)','cod receita','cód. receita (siscac)'],
+  serie_reinf: ['série reinf','serie reinf','serie_reinf'],
+  natureza_rendimento: ['natureza rendimento','natureza_rendimento','natureza','nat rendimento','natureza rendimento (cód. ecac)','natureza rendimento (cod. ecac)','natureza rendimento (cod ecac)','natureza rendimento cod ecac'],
+  base_calculo: ['base de cálculo','base de calculo','base_calculo','rendimento tributável','rendimento tributavel','base calculo','valor tributável','valor tributavel','base ir','base_ir','base ir individual','vlrbaseir'],
+  base_agreg: ['base agregada','base_agreg','vlrbaseagreg','vlr base agreg','base retencao agregada'],
+  base_csll: ['base csll','base_csll','vlrbasecsll','vlr base csll'],
+  base_cofins: ['base cofins','base_cofins','vlrbasecofins','vlr base cofins'],
+  base_pis: ['base pis','base_pis','base pp','vlrbasepp','vlr base pp','base pis/pasep'],
+  valor_retido: ['valor retido','valor_retido','vr retido','imposto retido','retencao individual','retenção individual','valor ret ir','valor_ret_ir','ir individual','valor irrf','vlrir'],
+  valor_ret_agreg: ['valor ret agreg','valor_ret_agreg','vlragreg','retencao agregada valor','valor csrf agregado'],
+  valor_ret_csll: ['valor ret csll','valor_ret_csll','vlrcsll','retencao csll'],
+  valor_ret_cofins: ['valor ret cofins','valor_ret_cofins','vlrcofins','retencao cofins'],
+  valor_ret_pis: ['valor ret pis','valor_ret_pis','vlrpp','retencao pis','retencao pis/pasep'],
+  retencao_agregada: ['retencao agregada','retenção agregada'],
+  cnpj_beneficiario: ['cnpj beneficiário','cnpj beneficiario','cnpj_beneficiario','cpf/cnpj beneficiário'],
+  nome_beneficiario: ['nome beneficiário','nome beneficiario','nome_beneficiario','beneficiário','beneficiario'],
+  tipo_beneficiario: ['tipo beneficiário','tipo beneficiario','tipo_beneficiario','pf/pj','tipo'],
+  is_rendimento_isento: ['is_rendimento_isento','is rendimento isento','rendimento isento','isento','imune'],
+  tp_isencao: ['tpisencao','tp_isencao','tp isencao','tipo isencao','tipo de isencao'],
+  desc_isencao: ['descisencao','desc_isencao','desc isencao','fundamentacao legal','fundamentação legal'],
+};
+
+const REINF_TEMPLATE_HEADER = [
+  'cnpj_emitente','nome_emitente','numero_nf','serie_nf','tp_servico','data_emissao','data_pagamento',
+  'valor_bruto','base_ir','base_agreg','base_csll','base_cofins','base_pis','valor_ret_ir','valor_ret_agreg',
+  'valor_ret_csll','valor_ret_cofins','valor_ret_pis','codigo_imposto','serie_reinf','natureza_rendimento',
+  'is_rendimento_isento','tp_isencao','desc_isencao','cnpj_beneficiario','nome_beneficiario','tipo_beneficiario'
+];
+
+const REINF_TEMPLATE_SAMPLE = [
+  '12345678000199','PRESTADOR EXEMPLO LTDA','12345','1','000000001','2026-01-15','2026-01-20','1000,00',
+  '1000,00','','','','','15,00','','','','','5952','S4000','15001','false','','','00987654000177',
+  'BENEFICIARIO EXEMPLO SA','PJ'
+];
+
+const REINF_MIN_REQUIRED_KEYS = ['cnpj_emitente'];
+const REINF_DATE_KEYS = ['data_emissao','data_pagamento'];
+const REINF_VALUE_KEYS = ['valor_retido','retencao_agregada','base_calculo','valor_bruto'];
+
+function validateReinfColumnMapping(colMap) {
+  const missing = REINF_MIN_REQUIRED_KEYS.filter(k => !(k in colMap));
+  if (!REINF_DATE_KEYS.some(k => k in colMap)) missing.push('data_emissao/data_pagamento');
+  if (!REINF_VALUE_KEYS.some(k => k in colMap)) missing.push('valor_retido/base_calculo/valor_bruto');
+  return missing;
+}
+
+function downloadReinfTemplate() {
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS nao carregou. Verifique os arquivos em ./vendor/js');
+    return;
+  }
+  const data = [REINF_TEMPLATE_HEADER, REINF_TEMPLATE_SAMPLE];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = REINF_TEMPLATE_HEADER.map((h) => ({ wch: Math.max(14, h.length + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'EFD_Reinf');
+  XLSX.writeFile(wb, 'template_efd_reinf.xlsx');
+}
+
+function resolveColumns(headerRow) {
+  const normalized = headerRow.map(normalizeHeader);
+  const mapping = {};
+  for (const [canonical, aliases] of Object.entries(COL_ALIASES)) {
+    for (const alias of aliases) {
+      const aliasNorm = normalizeHeader(alias);
+      const idx = normalized.indexOf(aliasNorm);
+      if (idx >= 0) { mapping[canonical] = idx; break; }
+    }
+  }
+  return mapping;
+}
+
+function findHeaderRowIndex(rows) {
+  const maxScan = Math.min(rows.length, 60);
+  let bestIdx = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < maxScan; i++) {
+    const row = rows[i].map(v => v === null ? '' : String(v));
+    const colMap = resolveColumns(row);
+    const score = Object.keys(colMap).length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+    const hasCnpj = 'cnpj_emitente' in colMap;
+    const hasValue = ('valor_retido' in colMap) || ('retencao_agregada' in colMap) || ('valor_bruto' in colMap) || ('base_calculo' in colMap);
+    if (hasCnpj && hasValue && score >= 3) return i;
+  }
+  return bestScore >= 3 ? bestIdx : -1;
+}
+
+function naturezaValida(s) { return /^\d{5}$/.test(String(s || '').trim()); }
+function tpServicoValido(s) { return /^\d{9}$/.test(String(s || '').trim()); }
+function inferSerieReinf(natureza) { return naturezaValida(natureza) ? 'S4000' : 'S2000'; }
+
+function rowToRecord(row, rowNum, colMap, hasSerieColumn) {
+  const get = key => {
+    const idx = colMap[key];
+    return (idx !== undefined && idx < row.length) ? row[idx] : null;
+  };
+
+  const natureza = cleanText(get('natureza_rendimento'));
+  const codigoImposto = cleanText(get('codigo_imposto'));
+  const tpServico = digitsOnly(get('tp_servico'));
+  const serieRaw = cleanText(get('serie_reinf')).toUpperCase();
+  const tpIsencaoRaw = cleanText(get('tp_isencao'));
+  const descIsencao = cleanText(get('desc_isencao'));
+  let isRendimentoIsento = parseBooleanLike(get('is_rendimento_isento'));
+
+  if (!isRendimentoIsento && (tpIsencaoRaw || descIsencao)) isRendimentoIsento = true;
+
+  let serieReinf;
+  if (hasSerieColumn) {
+    if (serieRaw !== 'S2000' && serieRaw !== 'S4000') return null;
+    serieReinf = serieRaw;
+  } else {
+    serieReinf = isRendimentoIsento ? 'S4000' : inferSerieReinf(natureza);
+  }
+
+  const numeroNf = cleanText(get('numero_nf')) || `ROW${rowNum}`;
+  let valorBruto = parseDecimal(get('valor_bruto') ?? get('base_calculo'));
+  let baseCalculo = parseDecimal(get('base_calculo') ?? get('valor_bruto'));
+  let valorRetido = parseDecimal(get('valor_retido'));
+  if (valorRetido <= 0) valorRetido = parseDecimal(get('retencao_agregada') || get('valor_retido'));
+
+  const baseAgreg = parseDecimal(get('base_agreg'));
+  const baseCsll = parseDecimal(get('base_csll'));
+  const baseCofins = parseDecimal(get('base_cofins'));
+  const basePis = parseDecimal(get('base_pis'));
+  const valorRetAgreg = parseDecimal(get('valor_ret_agreg'));
+  const valorRetCsll = parseDecimal(get('valor_ret_csll'));
+  const valorRetCofins = parseDecimal(get('valor_ret_cofins'));
+  const valorRetPis = parseDecimal(get('valor_ret_pis'));
+
+  const cnpjEmitente = digitsOnly(get('cnpj_emitente'));
+  const nomeEmitente = cleanText(get('nome_emitente'));
+
+  if (!cnpjEmitente && !nomeEmitente && !natureza && valorBruto <= 0 && baseCalculo <= 0 && valorRetido <= 0) return null;
+  if (valorRetido <= 0 && codigoImposto === '-' && !isRendimentoIsento) return null;
+
+  const tpIsencao = tpIsencaoRaw ? tpIsencaoRaw.toUpperCase() : null;
+
+  return {
+    _source_row: rowNum,
+    cnpj_emitente: cnpjEmitente,
+    nome_emitente: nomeEmitente,
+    numero_nf: numeroNf,
+    serie_nf: cleanText(get('serie_nf')),
+    tp_servico: tpServico,
+    data_emissao: parseDate(get('data_emissao')),
+    data_pagamento: parseDate(get('data_pagamento') ?? get('data_emissao')),
+    valor_bruto: valorBruto,
+    codigo_imposto: codigoImposto,
+    serie_reinf: serieReinf,
+    natureza_rendimento: natureza,
+    base_calculo: baseCalculo,
+    valor_retido: valorRetido,
+    base_agreg: baseAgreg,
+    base_csll: baseCsll,
+    base_cofins: baseCofins,
+    base_pis: basePis,
+    valor_ret_agreg: valorRetAgreg,
+    valor_ret_csll: valorRetCsll,
+    valor_ret_cofins: valorRetCofins,
+    valor_ret_pis: valorRetPis,
+    is_rendimento_isento: isRendimentoIsento,
+    tp_isencao: tpIsencao,
+    desc_isencao: descIsencao,
+    cnpj_beneficiario: digitsOnly(get('cnpj_beneficiario')),
+    nome_beneficiario: cleanText(get('nome_beneficiario')),
+    tipo_beneficiario: cleanText(get('tipo_beneficiario') || 'PJ').toUpperCase(),
+  };
+}
+
+function readXlsxSheet(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  if (!rows.length) return [];
+
+  const headerIndex = findHeaderRowIndex(rows);
+  if (headerIndex < 0) throw new Error('Nao foi possivel identificar o cabecalho da planilha.');
+
+  const header = rows[headerIndex].map(h => h === null ? '' : String(h));
+  const colMap = resolveColumns(header);
+  const missingCols = validateReinfColumnMapping(colMap);
+  if (missingCols.length) {
+    throw new Error('Cabecalho incompleto. Colunas obrigatorias ausentes: ' + missingCols.join(', '));
+  }
+  const hasSerieColumn = 'serie_reinf' in colMap;
+
+  const records = [];
+  for (let i = headerIndex + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row.some(v => v !== null && String(v).trim() !== '')) continue;
+    const rec = rowToRecord(row, i + 1, colMap, hasSerieColumn);
+    if (rec) records.push(rec);
+  }
+  return records;
+}
+
+function readCsvText(text) {
+  const sample = text.slice(0, 2048);
+  let sep = ',';
+  for (const c of [';', '\t', '|']) {
+    if ((sample.match(new RegExp('\\' + c, 'g')) || []).length > (sample.match(/,/g) || []).length) {
+      sep = c;
+      break;
+    }
+  }
+
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const parseLine = line => {
+    const result = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === sep && !inQ) {
+        result.push(cleanText(cur));
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cleanText(cur));
+    return result;
+  };
+
+  const rows = lines.map(parseLine).filter(r => r.some(v => v !== ''));
+  if (!rows.length) return [];
+
+  const headerIndex = findHeaderRowIndex(rows);
+  if (headerIndex < 0) throw new Error('Nao foi possivel identificar o cabecalho do CSV.');
+
+  const colMap = resolveColumns(rows[headerIndex]);
+  const missingCols = validateReinfColumnMapping(colMap);
+  if (missingCols.length) {
+    throw new Error('Cabecalho incompleto. Colunas obrigatorias ausentes: ' + missingCols.join(', '));
+  }
+  const hasSerieColumn = 'serie_reinf' in colMap;
+
+  const records = [];
+  for (let i = headerIndex + 1; i < rows.length; i++) {
+    const rec = rowToRecord(rows[i], i + 1, colMap, hasSerieColumn);
+    if (rec) records.push(rec);
+  }
+  return records;
+}
+
+function readControlSheet(arrayBuffer, filename) {
+  if (filename.toLowerCase().endsWith('.csv')) {
+    let text = new TextDecoder('utf-8').decode(arrayBuffer).replace(/^\uFEFF/, '');
+    if (text.includes('\uFFFD')) text = new TextDecoder('latin1').decode(arrayBuffer).replace(/^\uFEFF/, '');
+    return readCsvText(text);
+  }
+  return readXlsxSheet(arrayBuffer);
+}
+
+function validateRecords(records) {
+  const issues = [];
+  records.forEach((rec, i) => {
+    const row = rec._source_row || (i + 2);
+    if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
+    if (rec.serie_reinf === 'S4000' && !naturezaValida(rec.natureza_rendimento)) {
+      if (rec.is_rendimento_isento) issues.push(`Linha ${row}: natRend obrigatoria e invalida (${rec.natureza_rendimento}) para rendimento isento em S4000.`);
+      else issues.push(`Linha ${row}: Natureza Rendimento inválida (${rec.natureza_rendimento}) para S4000.`);
+    }
+    if (rec.serie_reinf === 'S2000' && !tpServicoValido(rec.tp_servico)) issues.push(`Linha ${row}: tp_servico inválido para S2000 (use 9 dígitos).`);
+    if (rec.serie_reinf === 'S2000' && !rec.data_emissao) issues.push(`Linha ${row}: Data de Emissao obrigatoria para S2000/R-2010.`);
+    if (rec.serie_reinf === 'S4000' && !(rec.data_pagamento || rec.data_emissao)) issues.push(`Linha ${row}: Data de Pagamento obrigatoria para S4000 (dtFG).`);
+
+    if (rec.is_rendimento_isento) {
+      if (rec.serie_reinf !== 'S4000') issues.push(`Linha ${row}: Rendimento isento deve estar na série S4000.`);
+      if (rec.valor_bruto <= 0 && rec.base_calculo <= 0) issues.push(`Linha ${row}: Informe valor bruto/base para rendimento isento.`);
+    } else {
+      if (rec.serie_reinf === 'S2000' && rec.valor_retido <= 0) issues.push(`Linha ${row}: Valor Retido deve ser positivo para S2000.`);
+      if (rec.serie_reinf === 'S4000') {
+        const totalRet = (rec.valor_retido || 0) + (rec.valor_ret_agreg || 0) + (rec.valor_ret_csll || 0) + (rec.valor_ret_cofins || 0) + (rec.valor_ret_pis || 0);
+        if (totalRet <= 0) issues.push(`Linha ${row}: Informe ao menos uma retenção para S4000 (IR/Agreg/CSLL/Cofins/PIS).`);
+      }
+    }
+  });
+  return issues;
+}
+
+function prettifyXml(xmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+  let out = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  function walk(node, depth) {
+    const indent = '  '.repeat(depth);
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent.trim();
+      if (t) out += indent + t + '\n';
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName;
+    const attrs = Array.from(node.attributes).map(a => ` ${a.name}="${a.value}"`).join('');
+    const children = Array.from(node.childNodes).filter(c => c.nodeType === Node.ELEMENT_NODE || (c.nodeType === Node.TEXT_NODE && c.textContent.trim()));
+    if (!children.length) out += `${indent}<${tag}${attrs} />\n`;
+    else if (children.length === 1 && children[0].nodeType === Node.TEXT_NODE) out += `${indent}<${tag}${attrs}>${children[0].textContent.trim()}</${tag}>\n`;
+    else {
+      out += `${indent}<${tag}${attrs}>\n`;
+      children.forEach(c => walk(c, depth + 1));
+      out += `${indent}</${tag}>\n`;
+    }
+  }
+  walk(doc.documentElement, 0);
+  return out;
+}
+
+function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function validateXmlNamespace(xmlStr, expectedNs) {
+  if (!expectedNs) return;
+  const nsPattern = new RegExp(`^<[^>]+\\sxmlns=\"${escapeRegex(expectedNs)}\"`);
+  if (!nsPattern.test(xmlStr)) throw new Error('Namespace raiz do XML nao corresponde ao layout EFD-Reinf esperado.');
+  if (/xmlns=""/.test(xmlStr)) throw new Error('XML contem elementos sem namespace (xmlns=""). Revise o mapeamento de layout.');
+}
+
+function buildXml(tagName, ns, builderFn) {
+  const doc = document.implementation.createDocument(ns, tagName, null);
+  const root = doc.documentElement;
+  builderFn(doc, root);
+  const xs = new XMLSerializer();
+  const rawXml = xs.serializeToString(root);
+  validateXmlNamespace(rawXml, ns);
+  return prettifyXml(rawXml);
+}
+
+function addEl(doc, parent, tag, text) {
+  const ns = parent && parent.namespaceURI ? parent.namespaceURI : doc.documentElement.namespaceURI;
+  const el = ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
+  if (text !== undefined && text !== null) el.textContent = String(text);
+  parent.appendChild(el);
+  return el;
+}
+
+function makeReinfEventId(tpInsc, nrInsc, seq) {
+  const now = new Date();
+  const ts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('');
+  const tp = String(parseInt(tpInsc, 10) || 1).slice(0, 1);
+  const insc = digitsOnly(nrInsc).padStart(14, '0').slice(-14);
+  const seqNum = Math.max(1, parseInt(seq, 10) || 1);
+  const seqPart = String(seqNum % 100000).padStart(5, '0');
+  return 'ID' + tp + insc + ts + seqPart;
+}
+
+function inferIsenImun(records) {
+  if (!records.some(r => r.is_rendimento_isento)) return null;
+  const hasImune = records.some(r => /imun/i.test(String(r.desc_isencao || '')));
+  return hasImune ? '3' : '2';
+}
+
+function buildR1000(cnpj, razaoSocial, cpfContato, classTrib, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtInfoContribuinte/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtInfoContri');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+    const ide = addEl(doc, evt, 'ideContri');
+    addEl(doc, ide, 'tpInsc', '1');
+    addEl(doc, ide, 'nrInsc', cnpj);
+    const infoContri = addEl(doc, evt, 'infoContri');
+    const inclusao = addEl(doc, infoContri, 'inclusao');
+    const idePeriodo = addEl(doc, inclusao, 'idePeriodo');
+    const now = new Date();
+    const iniValid = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    addEl(doc, idePeriodo, 'iniValid', iniValid);
+    const infoCadastro = addEl(doc, inclusao, 'infoCadastro');
+    addEl(doc, infoCadastro, 'classTrib', classTrib);
+    addEl(doc, infoCadastro, 'indEscrituracao', '1');
+    addEl(doc, infoCadastro, 'indDesoneracao', '0');
+    addEl(doc, infoCadastro, 'indAcordoIsenMulta', '0');
+    const contato = addEl(doc, infoCadastro, 'contato');
+    addEl(doc, contato, 'nmCtt', razaoSocial || 'N/A');
+    addEl(doc, contato, 'cpfCtt', cpfContato);
+  });
+}
+
+function buildR2010(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtTomadorServicos/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtServTom');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'indRetif', '1');
+    addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2, '0')}`);
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+
+    const infoServTom = addEl(doc, evt, 'infoServTom');
+    const ideEstabObra = addEl(doc, infoServTom, 'ideEstabObra');
+    addEl(doc, ideEstabObra, 'tpInscEstab', '1');
+    addEl(doc, ideEstabObra, 'nrInscEstab', cnpjContrib);
+    addEl(doc, ideEstabObra, 'indObra', '0');
+
+    const idePrestServ = addEl(doc, ideEstabObra, 'idePrestServ');
+    addEl(doc, idePrestServ, 'cnpjPrestador', cnpjPrestador);
+
+    const nfGroups = {};
+    for (const rec of records) {
+      const key = `${rec.numero_nf}||${rec.data_emissao}||${rec.valor_bruto}`;
+      if (!nfGroups[key]) nfGroups[key] = [];
+      nfGroups[key].push(rec);
+    }
+
+    const totalBruto = records.reduce((s, r) => s + (r.valor_bruto || 0), 0);
+    const totalBase = records.reduce((s, r) => s + (r.base_calculo || 0), 0);
+    const totalRet = records.reduce((s, r) => s + (r.valor_retido || 0), 0);
+    addEl(doc, idePrestServ, 'vlrTotalBruto', fmtDec(totalBruto));
+    addEl(doc, idePrestServ, 'vlrTotalBaseRet', fmtDec(totalBase));
+    addEl(doc, idePrestServ, 'vlrTotalRetPrinc', fmtDec(totalRet));
+    addEl(doc, idePrestServ, 'indCPRB', '0');
+
+    for (const [, nfRecs] of Object.entries(nfGroups)) {
+      const nfs = addEl(doc, idePrestServ, 'nfs');
+      addEl(doc, nfs, 'serie', (nfRecs[0].serie_nf || '1').slice(0, 5));
+      addEl(doc, nfs, 'numDocto', nfRecs[0].numero_nf);
+      addEl(doc, nfs, 'dtEmissaoNF', nfRecs[0].data_emissao || `${year}-${String(month).padStart(2, '0')}-01`);
+      addEl(doc, nfs, 'vlrBruto', fmtDec(nfRecs[0].valor_bruto));
+
+      const tpGroups = {};
+      for (const rec of nfRecs) {
+        if (!tpServicoValido(rec.tp_servico)) {
+          throw new Error(`Linha ${rec._source_row || 'N/A'}: tp_servico ausente/inválido para R-2010.`);
+        }
+        const tp = rec.tp_servico;
+        if (!tpGroups[tp]) tpGroups[tp] = [];
+        tpGroups[tp].push(rec);
+      }
+
+      for (const [tpServ, recsTp] of Object.entries(tpGroups)) {
+        const infoTpServ = addEl(doc, nfs, 'infoTpServ');
+        addEl(doc, infoTpServ, 'tpServico', tpServ);
+        const baseTotal = recsTp.reduce((s, r) => s + r.base_calculo, 0);
+        const retTotal = recsTp.reduce((s, r) => s + r.valor_retido, 0);
+        addEl(doc, infoTpServ, 'vlrBaseRet', fmtDec(baseTotal));
+        addEl(doc, infoTpServ, 'vlrRetencao', fmtDec(retTotal));
+      }
+    }
+  });
+}
+
+function buildR4020(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evt4020PagtoBeneficiarioPJ/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtRetPJ');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'indRetif', '1');
+    addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2, '0')}`);
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+
+    const ideEstab = addEl(doc, evt, 'ideEstab');
+    addEl(doc, ideEstab, 'tpInscEstab', '1');
+    addEl(doc, ideEstab, 'nrInscEstab', cnpjContrib);
+
+    const ideBenef = addEl(doc, ideEstab, 'ideBenef');
+    addEl(doc, ideBenef, 'cnpjBenef', cnpjPrestador);
+    const nmBenef = (records[0] && (records[0].nome_beneficiario || records[0].nome_emitente)) || '';
+    if (nmBenef) addEl(doc, ideBenef, 'nmBenef', nmBenef.slice(0, 70));
+    const isenImun = inferIsenImun(records);
+    if (isenImun) addEl(doc, ideBenef, 'isenImun', isenImun);
+
+    const groups = {};
+    for (const rec of records) {
+      if (!naturezaValida(rec.natureza_rendimento)) {
+        throw new Error(`Linha ${rec._source_row || 'N/A'}: natRend inválida para R-4020.`);
+      }
+      const natureza = rec.natureza_rendimento;
+      if (!groups[natureza]) groups[natureza] = [];
+      groups[natureza].push(rec);
+    }
+
+    for (const [natureza, recsNat] of Object.entries(groups)) {
+      const idePgto = addEl(doc, ideBenef, 'idePgto');
+      addEl(doc, idePgto, 'natRend', natureza);
+      for (const rec of recsNat) {
+        const infoPgto = addEl(doc, idePgto, 'infoPgto');
+        const dtFg = rec.data_pagamento || rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
+        addEl(doc, infoPgto, 'dtFG', dtFg);
+        const vlrBruto = rec.valor_bruto > 0 ? rec.valor_bruto : rec.base_calculo;
+        if (vlrBruto > 0) addEl(doc, infoPgto, 'vlrBruto', fmtDec(vlrBruto));
+
+        const hasRetencoes = !rec.is_rendimento_isento && (
+          rec.base_calculo > 0 || rec.valor_retido > 0 || rec.base_agreg > 0 || rec.valor_ret_agreg > 0 ||
+          rec.base_csll > 0 || rec.valor_ret_csll > 0 || rec.base_cofins > 0 || rec.valor_ret_cofins > 0 ||
+          rec.base_pis > 0 || rec.valor_ret_pis > 0
+        );
+
+        if (hasRetencoes) {
+          const retencoes = addEl(doc, infoPgto, 'retencoes');
+          if (rec.base_calculo > 0) addEl(doc, retencoes, 'vlrBaseIR', fmtDec(rec.base_calculo));
+          if (rec.valor_retido > 0) addEl(doc, retencoes, 'vlrIR', fmtDec(rec.valor_retido));
+          if (rec.base_agreg > 0) addEl(doc, retencoes, 'vlrBaseAgreg', fmtDec(rec.base_agreg));
+          if (rec.valor_ret_agreg > 0) addEl(doc, retencoes, 'vlrAgreg', fmtDec(rec.valor_ret_agreg));
+          if (rec.base_csll > 0) addEl(doc, retencoes, 'vlrBaseCSLL', fmtDec(rec.base_csll));
+          if (rec.valor_ret_csll > 0) addEl(doc, retencoes, 'vlrCSLL', fmtDec(rec.valor_ret_csll));
+          if (rec.base_cofins > 0) addEl(doc, retencoes, 'vlrBaseCofins', fmtDec(rec.base_cofins));
+          if (rec.valor_ret_cofins > 0) addEl(doc, retencoes, 'vlrCofins', fmtDec(rec.valor_ret_cofins));
+          if (rec.base_pis > 0) addEl(doc, retencoes, 'vlrBasePP', fmtDec(rec.base_pis));
+          if (rec.valor_ret_pis > 0) addEl(doc, retencoes, 'vlrPP', fmtDec(rec.valor_ret_pis));
+        }
+      }
+    }
+  });
+}
+
+function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtFechamento/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtFechaEvPer');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'perApur', perApur);
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+    const infoFech = addEl(doc, evt, 'infoFech');
+    addEl(doc, infoFech, 'evtServTm', 'S');
+  });
+}
+
+function buildR4099Fechamento(cnpjContrib, perApur, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evt4099FechamentoDirf/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtFech');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'perApur', perApur);
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+    const infoFech = addEl(doc, evt, 'infoFech');
+    addEl(doc, infoFech, 'fechRet', '1');
+  });
+}
+
+function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, year, tpAmb, cpfContato, classTrib) {
+  const records = readControlSheet(arrayBuffer, filename);
+  if (!records.length) throw new Error('Nenhum registro S2000/S4000 encontrado na planilha.');
+
+  const issues = validateRecords(records);
+  if (issues.length) throw new Error('Inconsistências:\n' + issues.join('\n'));
+
+  const cnpj = digitsOnly(cnpjContrib);
+  const perApur = `${year}-${String(month).padStart(2, '0')}`;
+  let seqEvento = 1;
+  const nextEventId = () => {
+    const id = makeReinfEventId('1', cnpj, seqEvento);
+    seqEvento += 1;
+    return id;
+  };
+
+  const inssByPrestador = {};
+  const federalByPrestador = {};
+  for (const rec of records) {
+    if (rec.serie_reinf === 'S2000') {
+      if (!inssByPrestador[rec.cnpj_emitente]) inssByPrestador[rec.cnpj_emitente] = [];
+      inssByPrestador[rec.cnpj_emitente].push(rec);
+    } else {
+      if (!federalByPrestador[rec.cnpj_emitente]) federalByPrestador[rec.cnpj_emitente] = [];
+      federalByPrestador[rec.cnpj_emitente].push(rec);
+    }
+  }
+
+  const xmls = {};
+  xmls['R-1000_Cadastro_Empresa.xml'] = buildR1000(cnpj, razaoSocial, cpfContato, classTrib, tpAmb, nextEventId());
+
+  for (const [prest, recs] of Object.entries(inssByPrestador)) {
+    xmls[`INSS_R2010/R2010_CNPJ_${prest}_${year}${String(month).padStart(2, '0')}.xml`] = buildR2010(cnpj, prest, recs, month, year, tpAmb, nextEventId());
+  }
+  if (Object.keys(inssByPrestador).length) {
+    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildR2099Fechamento(cnpj, perApur, tpAmb, nextEventId());
+  }
+
+  for (const [prest, recs] of Object.entries(federalByPrestador)) {
+    xmls[`Federais_R4020/R4020_CNPJ_${prest}_${year}${String(month).padStart(2, '0')}.xml`] = buildR4020(cnpj, prest, recs, month, year, tpAmb, nextEventId());
+  }
+  if (Object.keys(federalByPrestador).length) {
+    xmls['Federais_R4020/R4099_Fechamento.xml'] = buildR4099Fechamento(cnpj, perApur, tpAmb, nextEventId());
+  }
+
+  return xmls;
+}
+
+function groupIssuesByRow(issues) {
+  const byRow = {};
+  for (const issue of issues) {
+    const m = String(issue || '').match(/^Linha\s+(\d+):\s*(.*)$/);
+    if (!m) continue;
+    const row = parseInt(m[1], 10);
+    if (!byRow[row]) byRow[row] = [];
+    byRow[row].push(m[2] || issue);
+  }
+  return byRow;
+}
+
+function totalRetencoes(rec) {
+  return (rec.valor_retido || 0) + (rec.valor_ret_agreg || 0) + (rec.valor_ret_csll || 0) + (rec.valor_ret_cofins || 0) + (rec.valor_ret_pis || 0);
+}
+
+function formatPrecheckLine(rec, rowIssues) {
+  const row = rec._source_row || '?';
+  const serie = rec.serie_reinf || 'N/A';
+  const nat = rec.natureza_rendimento || 'N/A';
+  const tpServ = rec.tp_servico || 'N/A';
+  const retTot = fmtDec(totalRetencoes(rec));
+  const status = rowIssues && rowIssues.length ? 'ERRO' : 'OK';
+  const base = `Linha ${row} [${status}] serie=${serie} natRend=${nat} tpServico=${tpServ} retTotal=${retTot}`;
+  if (!rowIssues || !rowIssues.length) return base;
+  return `${base}\n  - ${rowIssues.join('\n  - ')}`;
+}
+
+function buildReinfPrecheckReport(records, issues) {
+  const byRow = groupIssuesByRow(issues);
+  const qtdS2000 = records.filter(r => r.serie_reinf === 'S2000').length;
+  const qtdS4000 = records.filter(r => r.serie_reinf === 'S4000').length;
+  const qtdIsentos = records.filter(r => r.is_rendimento_isento).length;
+
+  const lines = [];
+  lines.push('Pre-validacao EFD-Reinf concluida.');
+  lines.push(`Registros lidos: ${records.length}`);
+  lines.push(`S2000: ${qtdS2000} | S4000: ${qtdS4000} | Isentos: ${qtdIsentos}`);
+  lines.push(`Inconsistencias: ${issues.length}`);
+  lines.push('');
+  lines.push('Detalhe por linha:');
+
+  const maxLines = 200;
+  records.slice(0, maxLines).forEach((rec) => {
+    const row = rec._source_row || -1;
+    const rowIssues = byRow[row] || [];
+    lines.push(formatPrecheckLine(rec, rowIssues));
+  });
+  if (records.length > maxLines) {
+    lines.push('');
+    lines.push(`... ${records.length - maxLines} linha(s) adicional(is) omitida(s) no resumo.`);
+  }
+  return lines.join('\n');
+}
+
+async function runReinf() {
+  const fileInput = document.getElementById('reinf-file');
+  const cnpj = document.getElementById('reinf-cnpj').value.trim();
+  const razao = document.getElementById('reinf-razao').value.trim();
+  const cpfCttRaw = document.getElementById('reinf-cpf-ctt').value.trim();
+  const classTrib = document.getElementById('reinf-class-trib').value;
+  const tpAmb = document.getElementById('reinf-tp-amb').value;
+  const mes = parseInt(document.getElementById('reinf-mes').value, 10);
+  const ano = parseInt(document.getElementById('reinf-ano').value, 10);
+  const btn = document.getElementById('reinf-btn');
+  const dlDiv = document.getElementById('reinf-download');
+  dlDiv.innerHTML = '';
+
+  const cnpjDigits = digitsOnly(cnpj);
+  const cpfCtt = digitsOnly(cpfCttRaw);
+  if (!fileInput.files.length) { setStatus('reinf', 'error', 'Selecione um arquivo XLSX ou CSV.'); return; }
+  if (!cnpjDigits || cnpjDigits.length !== 14) { setStatus('reinf', 'error', 'Informe um CNPJ válido com 14 dígitos.'); return; }
+  if (!razao) { setStatus('reinf', 'error', 'Informe a Razão Social.'); return; }
+  if (!isValidCpf(cpfCtt)) { setStatus('reinf', 'error', 'Informe um CPF de contato válido para o R-1000.'); return; }
+  if (!/^\d{2}$/.test(String(classTrib || ''))) { setStatus('reinf', 'error', 'Classificação Tributária inválida (use 2 dígitos).'); return; }
+  if (tpAmb !== '1' && tpAmb !== '2') { setStatus('reinf', 'error', 'Ambiente inválido.'); return; }
+  if (!mes || mes < 1 || mes > 12) { setStatus('reinf', 'error', 'Mês inválido (1-12).'); return; }
+  if (!ano || ano < 2020) { setStatus('reinf', 'error', 'Ano inválido.'); return; }
+  if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') {
+    setStatus('reinf', 'error', 'Dependências ausentes (XLSX/JSZip). Verifique vendor/js.');
+    return;
+  }
+
+  btn.disabled = true;
+  setStatus('reinf', 'info', 'Processando planilha...');
+
+  try {
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+    const xmls = gerarXmlsReinf(buf, file.name, cnpjDigits, razao, mes, ano, tpAmb, cpfCtt, classTrib);
+
+    const zip = new JSZip();
+    for (const [path, content] of Object.entries(xmls)) zip.file(path, content);
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipName = `EFD_Reinf_${ano}${String(mes).padStart(2, '0')}.zip`;
+
+    setStatus('reinf', 'ok',
+      `✓ ${Object.keys(xmls).length} arquivo(s) XML gerado(s).\n` +
+      `Ambiente selecionado: ${tpAmb === '1' ? 'Produção (Real)' : 'Produção Restrita (Testes)'}\n` +
+      'Atenção: os XMLs são gerados sem assinatura digital XMLDSig.'
+    );
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = zipName;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${zipName}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('reinf', 'error', 'Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runReinfPrecheck() {
+  const fileInput = document.getElementById('reinf-file');
+  const btn = document.getElementById('reinf-precheck-btn');
+
+  if (!fileInput.files.length) {
+    setStatus('reinf', 'error', 'Selecione um arquivo XLSX ou CSV para validação.');
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    setStatus('reinf', 'error', 'Dependência XLSX ausente. Verifique vendor/js.');
+    return;
+  }
+
+  btn.disabled = true;
+  setStatus('reinf', 'info', 'Executando pré-validação da planilha...');
+
+  try {
+    const file = fileInput.files[0];
+    const buf = await file.arrayBuffer();
+    const records = readControlSheet(buf, file.name);
+    if (!records.length) throw new Error('Nenhum registro encontrado na planilha para validação.');
+    const issues = validateRecords(records);
+    const report = buildReinfPrecheckReport(records, issues);
+    if (issues.length) setStatus('reinf', 'error', report);
+    else setStatus('reinf', 'ok', report + '\n\nNenhuma inconsistência encontrada. Pronto para gerar o ZIP.');
+  } catch (e) {
+    setStatus('reinf', 'error', 'Erro no pré-check: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
 </body>
 </html>

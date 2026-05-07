@@ -8,7 +8,7 @@ Este repositorio roda 100% no navegador. As entradas HTML ficam na raiz do proje
 
 - `app.html` - launcher com todas as ferramentas
 - `payments-report-extraction.html` - entrada standalone de Extração de Pagamentos
-- `efd-reinf.html` - entrada standalone de EFD-Reinf
+- `efd-reinf.html` - entrada standalone de EFD-Reinf (app completo, sem iframe no monolito)
 - `diarias.html` - entrada standalone de Diarias
 - `vendor/js/xlsx.full.min.js`
 - `vendor/js/jszip.min.js`
@@ -34,7 +34,7 @@ Este repositorio roda 100% no navegador. As entradas HTML ficam na raiz do proje
 	- `diarias.html` para abrir somente Diarias.
 3. Use a ferramenta e baixe o arquivo gerado.
 
-As entradas standalone carregam o `app.html` com a ferramenta correspondente ja selecionada em modo dedicado.
+A entrada `efd-reinf.html` roda de forma autonoma. As demais entradas standalone ainda utilizam o launcher legado enquanto a migracao completa nao e finalizada.
 
 Sem Python, sem instalacao e sem terminal.
 

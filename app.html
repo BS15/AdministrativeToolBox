@@ -1709,7 +1709,15 @@ function parseSiscacCsv(text) {
     }
   }
 
-  return Object.values(payments);
+  // Ordena por data_contabilizado (1ª camada) e depois por siscac_pg (2ª camada)
+  return Object.values(payments).sort((a, b) => {
+    const dataA = a.data_contabilizado || '';
+    const dataB = b.data_contabilizado || '';
+    if (dataA !== dataB) {
+      return dataA.localeCompare(dataB);
+    }
+    return (a.siscac_pg || '').localeCompare(b.siscac_pg || '');
+  });
 }
 
 function paymentsToCsv(payments) {
