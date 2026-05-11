@@ -952,7 +952,7 @@ function validateRecords(records) {
 
     if (rec.serie_reinf === 'S4000') {
       const benef = resolveBeneficiarioId(rec);
-      if (benef.tipo === 'INVALID') {
+      if (!benef.tipo) {
         issues.push(`Linha ${row}: tipo_beneficiario inválido (use PF ou PJ).`);
       }
       if (benef.tipo === 'PF' && !/^\d{11}$/.test(benef.id || '')) {
@@ -963,6 +963,9 @@ function validateRecords(records) {
       }
       if (rec.is_rendimento_isento && !isValidTpIsencao(rec.tp_isencao)) {
         issues.push(`Linha ${row}: tp_isencao inválido para rendimento isento em S4000.`);
+      }
+      if (rec.is_rendimento_isento && !rec.tp_isencao) {
+        issues.push(`Linha ${row}: tp_isencao é obrigatório para rendimento isento em S4000.`);
       }
       if (rec.tp_isencao === '99' && !rec.desc_isencao) {
         issues.push(`Linha ${row}: desc_isencao é obrigatória quando tp_isencao = 99.`);
@@ -1096,7 +1099,7 @@ function normalizeTipoBeneficiario(tipo) {
   const t = String(tipo || '').trim().toUpperCase();
   if (!t) return 'PJ';
   if (t === 'PF' || t === 'PJ') return t;
-  return 'INVALID';
+  return null;
 }
 
 function resolveBeneficiarioId(rec) {
@@ -1114,7 +1117,7 @@ function isValidTpIsencao(tp) {
 function normalizeSnFlag(flagValue, fieldName) {
   const v = String(flagValue || '').trim().toUpperCase();
   if (v === 'S' || v === 'N') return v;
-  throw new Error(`Flag ${fieldName} inválida no R-2099 (use apenas S ou N).`);
+  throw new Error(`Flag ${fieldName} inválida no R-2099: recebido '${v}', esperado 'S' ou 'N'.`);
 }
 
 function buildR1000(cnpj, razaoSocial, cpfContato, classTrib, tpAmb, eventId) {
@@ -1356,9 +1359,10 @@ function buildR4010(cnpjContrib, cpfBenef, records, month, year, tpAmb, eventId)
 
         if (rec.is_rendimento_isento) {
           const rendIsento = addEl(doc, infoPgto, 'rendIsento');
-          const tpIsencao = (rec.tp_isencao && isValidTpIsencao(rec.tp_isencao))
-            ? String(rec.tp_isencao)
-            : '99';
+          if (!rec.tp_isencao || !isValidTpIsencao(rec.tp_isencao)) {
+            throw new Error(`Linha ${rec._source_row || 'N/A'}: tp_isencao obrigatório/válido para rendimento isento no R-4010.`);
+          }
+          const tpIsencao = String(rec.tp_isencao);
           addEl(doc, rendIsento, 'tpIsencao', tpIsencao);
           addEl(doc, rendIsento, 'vlrIsento', fmtDec(vlrBruto > 0 ? vlrBruto : rec.base_calculo));
           if (rec.desc_isencao) addEl(doc, rendIsento, 'descRendimento', rec.desc_isencao.slice(0, 100));
@@ -1380,23 +1384,17 @@ function buildFechamento(evento, perApur) {
 }
 
 function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId, flags) {
-  const rawFlags = Object.assign({
-    evtServTm: 'N',
-    evtServPr: 'N',
-    evtAssDespRec: 'N',
-    evtAssDespRep: 'N',
-    evtComProd: 'N',
-    evtCPRB: 'N',
-    evtAquis: 'N',
-  }, flags || {});
+  if (!flags || typeof flags !== 'object') {
+    throw new Error('Flags obrigatórias do R-2099 não foram informadas.');
+  }
   const f = {
-    evtServTm: normalizeSnFlag(rawFlags.evtServTm, 'evtServTm'),
-    evtServPr: normalizeSnFlag(rawFlags.evtServPr, 'evtServPr'),
-    evtAssDespRec: normalizeSnFlag(rawFlags.evtAssDespRec, 'evtAssDespRec'),
-    evtAssDespRep: normalizeSnFlag(rawFlags.evtAssDespRep, 'evtAssDespRep'),
-    evtComProd: normalizeSnFlag(rawFlags.evtComProd, 'evtComProd'),
-    evtCPRB: normalizeSnFlag(rawFlags.evtCPRB, 'evtCPRB'),
-    evtAquis: normalizeSnFlag(rawFlags.evtAquis, 'evtAquis'),
+    evtServTm: normalizeSnFlag(flags.evtServTm, 'evtServTm'),
+    evtServPr: normalizeSnFlag(flags.evtServPr, 'evtServPr'),
+    evtAssDespRec: normalizeSnFlag(flags.evtAssDespRec, 'evtAssDespRec'),
+    evtAssDespRep: normalizeSnFlag(flags.evtAssDespRep, 'evtAssDespRep'),
+    evtComProd: normalizeSnFlag(flags.evtComProd, 'evtComProd'),
+    evtCPRB: normalizeSnFlag(flags.evtCPRB, 'evtCPRB'),
+    evtAquis: normalizeSnFlag(flags.evtAquis, 'evtAquis'),
   };
   return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtFechamento/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtFechaEvPer');
