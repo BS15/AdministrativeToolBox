@@ -927,7 +927,6 @@ function readControlSheet(arrayBuffer, filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 function validateRecords(records) {
   const issues = [];
-  const tpIsencaoValido = (tp) => !tp || /^(1|2|3|4|5|6|7|8|10|11|99)$/.test(String(tp));
   records.forEach((rec, i) => {
     const row = rec._source_row || (i + 2);
     if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
@@ -953,13 +952,16 @@ function validateRecords(records) {
 
     if (rec.serie_reinf === 'S4000') {
       const benef = resolveBeneficiarioId(rec);
+      if (benef.tipo === 'INVALID') {
+        issues.push(`Linha ${row}: tipo_beneficiario inválido (use PF ou PJ).`);
+      }
       if (benef.tipo === 'PF' && !/^\d{11}$/.test(benef.id || '')) {
         issues.push(`Linha ${row}: Beneficiário PF exige CPF com 11 dígitos (coluna cnpj_beneficiario/cpf).`);
       }
       if (benef.tipo === 'PJ' && benef.id && !/^\d{14}$/.test(benef.id)) {
         issues.push(`Linha ${row}: Beneficiário PJ deve ter CNPJ com 14 dígitos.`);
       }
-      if (rec.is_rendimento_isento && !tpIsencaoValido(rec.tp_isencao)) {
+      if (rec.is_rendimento_isento && !isValidTpIsencao(rec.tp_isencao)) {
         issues.push(`Linha ${row}: tp_isencao inválido para rendimento isento em S4000.`);
       }
       if (rec.tp_isencao === '99' && !rec.desc_isencao) {
@@ -1091,7 +1093,10 @@ function inferIsenImun(records) {
 }
 
 function normalizeTipoBeneficiario(tipo) {
-  return String(tipo || '').trim().toUpperCase() === 'PF' ? 'PF' : 'PJ';
+  const t = String(tipo || '').trim().toUpperCase();
+  if (!t) return 'PJ';
+  if (t === 'PF' || t === 'PJ') return t;
+  return 'INVALID';
 }
 
 function resolveBeneficiarioId(rec) {
@@ -1100,6 +1105,16 @@ function resolveBeneficiarioId(rec) {
   if (informado) return { tipo, id: informado };
   if (tipo === 'PJ') return { tipo, id: digitsOnly(rec.cnpj_emitente) };
   return { tipo, id: '' };
+}
+
+function isValidTpIsencao(tp) {
+  return !tp || /^(1|2|3|4|5|6|7|8|10|11|99)$/.test(String(tp));
+}
+
+function normalizeSnFlag(flagValue, fieldName) {
+  const v = String(flagValue || '').trim().toUpperCase();
+  if (v === 'S' || v === 'N') return v;
+  throw new Error(`Flag ${fieldName} inválida no R-2099 (use apenas S ou N).`);
 }
 
 function buildR1000(cnpj, razaoSocial, cpfContato, classTrib, tpAmb, eventId) {
@@ -1341,7 +1356,7 @@ function buildR4010(cnpjContrib, cpfBenef, records, month, year, tpAmb, eventId)
 
         if (rec.is_rendimento_isento) {
           const rendIsento = addEl(doc, infoPgto, 'rendIsento');
-          const tpIsencao = /^(1|2|3|4|5|6|7|8|10|11|99)$/.test(String(rec.tp_isencao || ''))
+          const tpIsencao = (rec.tp_isencao && isValidTpIsencao(rec.tp_isencao))
             ? String(rec.tp_isencao)
             : '99';
           addEl(doc, rendIsento, 'tpIsencao', tpIsencao);
@@ -1365,7 +1380,7 @@ function buildFechamento(evento, perApur) {
 }
 
 function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId, flags) {
-  const f = Object.assign({
+  const rawFlags = Object.assign({
     evtServTm: 'N',
     evtServPr: 'N',
     evtAssDespRec: 'N',
@@ -1374,6 +1389,15 @@ function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId, flags) {
     evtCPRB: 'N',
     evtAquis: 'N',
   }, flags || {});
+  const f = {
+    evtServTm: normalizeSnFlag(rawFlags.evtServTm, 'evtServTm'),
+    evtServPr: normalizeSnFlag(rawFlags.evtServPr, 'evtServPr'),
+    evtAssDespRec: normalizeSnFlag(rawFlags.evtAssDespRec, 'evtAssDespRec'),
+    evtAssDespRep: normalizeSnFlag(rawFlags.evtAssDespRep, 'evtAssDespRep'),
+    evtComProd: normalizeSnFlag(rawFlags.evtComProd, 'evtComProd'),
+    evtCPRB: normalizeSnFlag(rawFlags.evtCPRB, 'evtCPRB'),
+    evtAquis: normalizeSnFlag(rawFlags.evtAquis, 'evtAquis'),
+  };
   return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtFechamento/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtFechaEvPer');
     evt.setAttribute('id', eventId);
@@ -1800,7 +1824,7 @@ function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, 
       buildR4010(cnpj, benefCpf, recs, month, year, tpAmb, nextEventId());
   }
   if (Object.keys(federalByBenefPJ).length || Object.keys(federalByBenefPF).length)
-    xmls['Federais_R4020/R4099_Fechamento.xml'] = buildR4099Fechamento(cnpj, perApur, tpAmb, nextEventId());
+    xmls['Federais_Fechamento/R4099_Fechamento.xml'] = buildR4099Fechamento(cnpj, perApur, tpAmb, nextEventId());
 
   return xmls;
 }

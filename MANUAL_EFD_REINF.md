@@ -74,7 +74,7 @@ Use serie `S4000` para registros de impostos federais no fluxo:
 2. Um XML R-4010 por beneficiario PF em:
 - `Federais_R4010/R4010_CPF_<cpf>_<aaaamm>.xml`
 3. Se houver qualquer linha S4000 no periodo, gera tambem:
-- `Federais_R4020/R4099_Fechamento.xml`
+- `Federais_Fechamento/R4099_Fechamento.xml`
 
 ## 6. Regras automáticas importantes da aplicacao
 
@@ -100,7 +100,7 @@ Exemplo de saida:
 3. `INSS_R2010/R2099_Fechamento.xml` (quando houver S2000)
 4. `Federais_R4010/R4010_CPF_XXXXXXXXXXX_AAAAMM.xml` (0..N, quando houver PF)
 5. `Federais_R4020/R4020_CNPJ_XXXXXXXXXXXXXX_AAAAMM.xml` (0..N, quando houver PJ)
-6. `Federais_R4020/R4099_Fechamento.xml` (quando houver S4000)
+6. `Federais_Fechamento/R4099_Fechamento.xml` (quando houver S4000)
 
 ## 8. Glossario das colunas do template EFD-Reinf
 
@@ -148,9 +148,9 @@ Exemplo de saida:
 | `is_rendimento_isento` | Condicional; usar quando a linha for isenta/imune. | Marca pagamentos isentos/imunes. | `false` |
 | `tp_isencao` | Condicional; usar quando houver classificacao de isencao/imunidade. | Tipo de isencao (codigos aceitos na secao 8.4). | `99` |
 | `desc_isencao` | Opcional; ajuda a qualificar a isencao/imunidade e influencia a inferencia de `isenImun`. | Descricao da isencao/imunidade. | `Imunidade constitucional` |
-| `cnpj_beneficiario` | Condicional na serie S4000. Para `tipo_beneficiario = PJ`, aceita CNPJ (14) e se vazio usa fallback `cnpj_emitente`. Para `tipo_beneficiario = PF`, deve conter CPF (11). | Identificador do beneficiario (CPF/CNPJ). | `00987654000177` |
+| `cnpj_beneficiario` | Condicional na serie S4000. Para `tipo_beneficiario = PJ`, aceita CNPJ (14) e se vazio usa fallback `cnpj_emitente`. Para `tipo_beneficiario = PF`, deve conter CPF (11). | Identificador do beneficiário (CPF/CNPJ). | `00987654000177` |
 | `nome_beneficiario` | Opcional. | Nome do beneficiario. | `BENEFICIARIO EXEMPLO SA` |
-| `tipo_beneficiario` | Recomendado na serie S4000. | Tipo do beneficiario (`PJ` padrao quando vazio; `PF` gera R-4010). | `PJ` |
+| `tipo_beneficiario` | Recomendado na serie S4000. | Tipo do beneficiário (`PJ` padrão quando vazio; `PF` gera R-4010). | `PJ` |
 | `numero_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Documento de apoio/controle interno. | `12345` |
 | `serie_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Serie do documento de apoio/controle interno. | `1` |
 
