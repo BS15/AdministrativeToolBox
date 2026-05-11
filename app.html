@@ -927,6 +927,7 @@ function readControlSheet(arrayBuffer, filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 function validateRecords(records) {
   const issues = [];
+  const tpIsencaoValido = (tp) => !tp || /^(1|2|3|4|5|6|7|8|10|11|99)$/.test(String(tp));
   records.forEach((rec, i) => {
     const row = rec._source_row || (i + 2);
     if (!rec.cnpj_emitente) issues.push(`Linha ${row}: CNPJ Emitente ausente.`);
@@ -948,6 +949,22 @@ function validateRecords(records) {
 
     if (rec.serie_reinf === 'S4000' && !(rec.data_pagamento || rec.data_emissao)) {
       issues.push(`Linha ${row}: Data de Pagamento obrigatoria para S4000 (dtFG).`);
+    }
+
+    if (rec.serie_reinf === 'S4000') {
+      const benef = resolveBeneficiarioId(rec);
+      if (benef.tipo === 'PF' && !/^\d{11}$/.test(benef.id || '')) {
+        issues.push(`Linha ${row}: Beneficiário PF exige CPF com 11 dígitos (coluna cnpj_beneficiario/cpf).`);
+      }
+      if (benef.tipo === 'PJ' && benef.id && !/^\d{14}$/.test(benef.id)) {
+        issues.push(`Linha ${row}: Beneficiário PJ deve ter CNPJ com 14 dígitos.`);
+      }
+      if (rec.is_rendimento_isento && !tpIsencaoValido(rec.tp_isencao)) {
+        issues.push(`Linha ${row}: tp_isencao inválido para rendimento isento em S4000.`);
+      }
+      if (rec.tp_isencao === '99' && !rec.desc_isencao) {
+        issues.push(`Linha ${row}: desc_isencao é obrigatória quando tp_isencao = 99.`);
+      }
     }
 
     if (rec.is_rendimento_isento) {
@@ -1073,6 +1090,18 @@ function inferIsenImun(records) {
   return hasImune ? '3' : '2';
 }
 
+function normalizeTipoBeneficiario(tipo) {
+  return String(tipo || '').trim().toUpperCase() === 'PF' ? 'PF' : 'PJ';
+}
+
+function resolveBeneficiarioId(rec) {
+  const tipo = normalizeTipoBeneficiario(rec.tipo_beneficiario);
+  const informado = digitsOnly(rec.cnpj_beneficiario);
+  if (informado) return { tipo, id: informado };
+  if (tipo === 'PJ') return { tipo, id: digitsOnly(rec.cnpj_emitente) };
+  return { tipo, id: '' };
+}
+
 function buildR1000(cnpj, razaoSocial, cpfContato, classTrib, tpAmb, eventId) {
   return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtInfoContribuinte/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtInfoContri');
@@ -1194,6 +1223,9 @@ function buildR4020(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eve
     addEl(doc, ideEstab, 'nrInscEstab', cnpjContrib);
 
     const ideBenef = addEl(doc, ideEstab, 'ideBenef');
+    if (!/^\d{14}$/.test(String(cnpjPrestador || ''))) {
+      throw new Error('Beneficiário PJ inválido para R-4020 (CNPJ com 14 dígitos é obrigatório).');
+    }
     addEl(doc, ideBenef, 'cnpjBenef', cnpjPrestador);
     const nmBenef = (records[0] && (records[0].nome_beneficiario || records[0].nome_emitente)) || '';
     if (nmBenef) addEl(doc, ideBenef, 'nmBenef', nmBenef.slice(0, 70));
@@ -1257,6 +1289,73 @@ function buildR4020(cnpjContrib, cnpjPrestador, records, month, year, tpAmb, eve
   });
 }
 
+function buildR4010(cnpjContrib, cpfBenef, records, month, year, tpAmb, eventId) {
+  return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evt4010PagtoBeneficiarioPF/v2_01_02', (doc, root) => {
+    const evt = addEl(doc, root, 'evtRetPF');
+    evt.setAttribute('id', eventId);
+    const ideEvt = addEl(doc, evt, 'ideEvento');
+    addEl(doc, ideEvt, 'indRetif', '1');
+    addEl(doc, ideEvt, 'perApur', `${year}-${String(month).padStart(2,'0')}`);
+    addEl(doc, ideEvt, 'tpAmb', tpAmb);
+    addEl(doc, ideEvt, 'procEmi', '1');
+    addEl(doc, ideEvt, 'verProc', '1.0');
+
+    const ideContri = addEl(doc, evt, 'ideContri');
+    addEl(doc, ideContri, 'tpInsc', '1');
+    addEl(doc, ideContri, 'nrInsc', cnpjContrib);
+
+    const ideEstab = addEl(doc, evt, 'ideEstab');
+    addEl(doc, ideEstab, 'tpInscEstab', '1');
+    addEl(doc, ideEstab, 'nrInscEstab', cnpjContrib);
+
+    if (!/^\d{11}$/.test(String(cpfBenef || ''))) {
+      throw new Error('Beneficiário PF inválido para R-4010 (CPF com 11 dígitos é obrigatório).');
+    }
+
+    const ideBenef = addEl(doc, ideEstab, 'ideBenef');
+    addEl(doc, ideBenef, 'cpfBenef', cpfBenef);
+    const nmBenef = (records[0] && (records[0].nome_beneficiario || records[0].nome_emitente)) || '';
+    if (nmBenef) addEl(doc, ideBenef, 'nmBenef', nmBenef.slice(0, 70));
+
+    const groups = {};
+    for (const rec of records) {
+      if (!naturezaValida(rec.natureza_rendimento)) {
+        throw new Error(`Linha ${rec._source_row || 'N/A'}: natRend inválida para R-4010.`);
+      }
+      const natureza = rec.natureza_rendimento;
+      if (!groups[natureza]) groups[natureza] = [];
+      groups[natureza].push(rec);
+    }
+
+    for (const [natureza, recsNat] of Object.entries(groups)) {
+      const idePgto = addEl(doc, ideBenef, 'idePgto');
+      addEl(doc, idePgto, 'natRend', natureza);
+
+      for (const rec of recsNat) {
+        const infoPgto = addEl(doc, idePgto, 'infoPgto');
+        const dtFg = rec.data_pagamento || rec.data_emissao || `${year}-${String(month).padStart(2, '0')}-01`;
+        addEl(doc, infoPgto, 'dtFG', dtFg);
+
+        const vlrBruto = rec.valor_bruto > 0 ? rec.valor_bruto : rec.base_calculo;
+        if (vlrBruto > 0) addEl(doc, infoPgto, 'vlrRendBruto', fmtDec(vlrBruto));
+
+        if (rec.is_rendimento_isento) {
+          const rendIsento = addEl(doc, infoPgto, 'rendIsento');
+          const tpIsencao = /^(1|2|3|4|5|6|7|8|10|11|99)$/.test(String(rec.tp_isencao || ''))
+            ? String(rec.tp_isencao)
+            : '99';
+          addEl(doc, rendIsento, 'tpIsencao', tpIsencao);
+          addEl(doc, rendIsento, 'vlrIsento', fmtDec(vlrBruto > 0 ? vlrBruto : rec.base_calculo));
+          if (rec.desc_isencao) addEl(doc, rendIsento, 'descRendimento', rec.desc_isencao.slice(0, 100));
+        } else {
+          if (rec.base_calculo > 0) addEl(doc, infoPgto, 'vlrRendTrib', fmtDec(rec.base_calculo));
+          if (rec.valor_retido > 0) addEl(doc, infoPgto, 'vlrIR', fmtDec(rec.valor_retido));
+        }
+      }
+    }
+  });
+}
+
 function buildFechamento(evento, perApur) {
   return buildXml('Reinf', '', (doc, root) => {
     const evt = addEl(doc, root, evento);
@@ -1265,7 +1364,16 @@ function buildFechamento(evento, perApur) {
   });
 }
 
-function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId) {
+function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId, flags) {
+  const f = Object.assign({
+    evtServTm: 'N',
+    evtServPr: 'N',
+    evtAssDespRec: 'N',
+    evtAssDespRep: 'N',
+    evtComProd: 'N',
+    evtCPRB: 'N',
+    evtAquis: 'N',
+  }, flags || {});
   return buildXml('Reinf', 'http://www.reinf.esocial.gov.br/schemas/evtFechamento/v2_01_02', (doc, root) => {
     const evt = addEl(doc, root, 'evtFechaEvPer');
     evt.setAttribute('id', eventId);
@@ -1280,7 +1388,13 @@ function buildR2099Fechamento(cnpjContrib, perApur, tpAmb, eventId) {
     addEl(doc, ideContri, 'nrInsc', cnpjContrib);
 
     const infoFech = addEl(doc, evt, 'infoFech');
-    addEl(doc, infoFech, 'evtServTm', 'S');
+    addEl(doc, infoFech, 'evtServTm', f.evtServTm);
+    addEl(doc, infoFech, 'evtServPr', f.evtServPr);
+    addEl(doc, infoFech, 'evtAssDespRec', f.evtAssDespRec);
+    addEl(doc, infoFech, 'evtAssDespRep', f.evtAssDespRep);
+    addEl(doc, infoFech, 'evtComProd', f.evtComProd);
+    addEl(doc, infoFech, 'evtCPRB', f.evtCPRB);
+    addEl(doc, infoFech, 'evtAquis', f.evtAquis);
   });
 }
 
@@ -1640,14 +1754,21 @@ function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, 
   };
 
   const inssByPrestador = {};
-  const federalByPrestador = {};
+  const federalByBenefPJ = {};
+  const federalByBenefPF = {};
   for (const rec of records) {
     if (rec.serie_reinf === 'S2000') {
       if (!inssByPrestador[rec.cnpj_emitente]) inssByPrestador[rec.cnpj_emitente] = [];
       inssByPrestador[rec.cnpj_emitente].push(rec);
     } else {
-      if (!federalByPrestador[rec.cnpj_emitente]) federalByPrestador[rec.cnpj_emitente] = [];
-      federalByPrestador[rec.cnpj_emitente].push(rec);
+      const benef = resolveBeneficiarioId(rec);
+      if (benef.tipo === 'PF') {
+        if (!federalByBenefPF[benef.id]) federalByBenefPF[benef.id] = [];
+        federalByBenefPF[benef.id].push(rec);
+      } else {
+        if (!federalByBenefPJ[benef.id]) federalByBenefPJ[benef.id] = [];
+        federalByBenefPJ[benef.id].push(rec);
+      }
     }
   }
 
@@ -1658,14 +1779,27 @@ function gerarXmlsReinf(arrayBuffer, filename, cnpjContrib, razaoSocial, month, 
     xmls[`INSS_R2010/R2010_CNPJ_${prest}_${year}${String(month).padStart(2,'0')}.xml`] =
       buildR2010(cnpj, prest, recs, month, year, tpAmb, nextEventId());
   }
-  if (Object.keys(inssByPrestador).length)
-    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildR2099Fechamento(cnpj, perApur, tpAmb, nextEventId());
-
-  for (const [prest, recs] of Object.entries(federalByPrestador)) {
-    xmls[`Federais_R4020/R4020_CNPJ_${prest}_${year}${String(month).padStart(2,'0')}.xml`] =
-      buildR4020(cnpj, prest, recs, month, year, tpAmb, nextEventId());
+  if (Object.keys(inssByPrestador).length) {
+    xmls['INSS_R2010/R2099_Fechamento.xml'] = buildR2099Fechamento(cnpj, perApur, tpAmb, nextEventId(), {
+      evtServTm: 'S',
+      evtServPr: 'N',
+      evtAssDespRec: 'N',
+      evtAssDespRep: 'N',
+      evtComProd: 'N',
+      evtCPRB: 'N',
+      evtAquis: 'N',
+    });
   }
-  if (Object.keys(federalByPrestador).length)
+
+  for (const [benefCnpj, recs] of Object.entries(federalByBenefPJ)) {
+    xmls[`Federais_R4020/R4020_CNPJ_${benefCnpj}_${year}${String(month).padStart(2,'0')}.xml`] =
+      buildR4020(cnpj, benefCnpj, recs, month, year, tpAmb, nextEventId());
+  }
+  for (const [benefCpf, recs] of Object.entries(federalByBenefPF)) {
+    xmls[`Federais_R4010/R4010_CPF_${benefCpf}_${year}${String(month).padStart(2,'0')}.xml`] =
+      buildR4010(cnpj, benefCpf, recs, month, year, tpAmb, nextEventId());
+  }
+  if (Object.keys(federalByBenefPJ).length || Object.keys(federalByBenefPF).length)
     xmls['Federais_R4020/R4099_Fechamento.xml'] = buildR4099Fechamento(cnpj, perApur, tpAmb, nextEventId());
 
   return xmls;

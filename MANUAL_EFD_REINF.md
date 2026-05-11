@@ -10,7 +10,7 @@ A aba EFD-Reinf:
 2. Interpreta os registros por linha.
 3. Separa os dados por serie:
 - `S2000` -> grupo INSS (evento R-2010)
-- `S4000` -> grupo Federais (evento R-4020)
+- `S4000` -> grupo Federais (eventos R-4010 PF e R-4020 PJ)
 4. Gera XMLs por prestador/beneficiario e eventos de fechamento.
 5. Compacta tudo em um ZIP para download.
 
@@ -55,7 +55,10 @@ Use serie `S2000` para registros de INSS no fluxo do evento R-2010.
 
 ## 5. Como informar Impostos Federais (S4000)
 
-Use serie `S4000` para registros de impostos federais no fluxo do evento R-4020.
+Use serie `S4000` para registros de impostos federais no fluxo:
+
+- `R-4010` para beneficiario **PF**
+- `R-4020` para beneficiario **PJ**
 
 ### 5.1 Regras praticas
 
@@ -66,9 +69,11 @@ Use serie `S4000` para registros de impostos federais no fluxo do evento R-4020.
 
 ### 5.2 O que o sistema gera
 
-1. Um XML R-4020 por CNPJ emitente em:
+1. Um XML R-4020 por beneficiario PJ em:
 - `Federais_R4020/R4020_CNPJ_<cnpj>_<aaaamm>.xml`
-2. Se houver qualquer linha S4000 no periodo, gera tambem:
+2. Um XML R-4010 por beneficiario PF em:
+- `Federais_R4010/R4010_CPF_<cpf>_<aaaamm>.xml`
+3. Se houver qualquer linha S4000 no periodo, gera tambem:
 - `Federais_R4020/R4099_Fechamento.xml`
 
 ## 6. Regras automáticas importantes da aplicacao
@@ -93,8 +98,9 @@ Exemplo de saida:
 1. `R-1000_Cadastro_Empresa.xml`
 2. `INSS_R2010/R2010_CNPJ_XXXXXXXXXXXXXX_AAAAMM.xml` (1..N)
 3. `INSS_R2010/R2099_Fechamento.xml` (quando houver S2000)
-4. `Federais_R4020/R4020_CNPJ_XXXXXXXXXXXXXX_AAAAMM.xml` (1..N)
-5. `Federais_R4020/R4099_Fechamento.xml` (quando houver S4000)
+4. `Federais_R4010/R4010_CPF_XXXXXXXXXXX_AAAAMM.xml` (0..N, quando houver PF)
+5. `Federais_R4020/R4020_CNPJ_XXXXXXXXXXXXXX_AAAAMM.xml` (0..N, quando houver PJ)
+6. `Federais_R4020/R4099_Fechamento.xml` (quando houver S4000)
 
 ## 8. Glossario das colunas do template EFD-Reinf
 
@@ -142,9 +148,9 @@ Exemplo de saida:
 | `is_rendimento_isento` | Condicional; usar quando a linha for isenta/imune. | Marca pagamentos isentos/imunes. | `false` |
 | `tp_isencao` | Condicional; usar quando houver classificacao de isencao/imunidade. | Tipo de isencao (codigos aceitos na secao 8.4). | `99` |
 | `desc_isencao` | Opcional; ajuda a qualificar a isencao/imunidade e influencia a inferencia de `isenImun`. | Descricao da isencao/imunidade. | `Imunidade constitucional` |
-| `cnpj_beneficiario` | Opcional no estado atual da ferramenta; se vazio, ela usa `cnpj_emitente` para identificar o beneficiario PJ. | CNPJ do beneficiario. | `00987654000177` |
+| `cnpj_beneficiario` | Condicional na serie S4000. Para `tipo_beneficiario = PJ`, aceita CNPJ (14) e se vazio usa fallback `cnpj_emitente`. Para `tipo_beneficiario = PF`, deve conter CPF (11). | Identificador do beneficiario (CPF/CNPJ). | `00987654000177` |
 | `nome_beneficiario` | Opcional. | Nome do beneficiario. | `BENEFICIARIO EXEMPLO SA` |
-| `tipo_beneficiario` | Opcional no estado atual da ferramenta; mantido para compatibilidade e futura separacao PF/PJ. | Tipo do beneficiario (`PJ` padrao quando vazio). | `PJ` |
+| `tipo_beneficiario` | Recomendado na serie S4000. | Tipo do beneficiario (`PJ` padrao quando vazio; `PF` gera R-4010). | `PJ` |
 | `numero_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Documento de apoio/controle interno. | `12345` |
 | `serie_nf` | Opcional; nao compoe o XML R-4010/R-4020. | Serie do documento de apoio/controle interno. | `1` |
 
@@ -242,4 +248,4 @@ Como corrigir:
 
 ## 11. Limite funcional atual
 
-A ferramenta gera os XMLs em lote no navegador para apoio operacional. A transmissao, assinatura digital e protocolo nos ambientes oficiais devem seguir o processo institucional adotado pela sua equipe fiscal.
+A ferramenta gera os XMLs em lote no navegador para apoio operacional (incluindo R-4010/R-4020 e fechamentos). A transmissao oficial, assinatura digital XMLDSig, mTLS, lote SOAP e protocolo nos ambientes da Receita ainda devem seguir o processo institucional adotado pela sua equipe fiscal.
