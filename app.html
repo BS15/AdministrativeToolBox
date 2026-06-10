@@ -1923,6 +1923,9 @@ function isValidBoletoLine(digits) {
   return false;
 }
 
+const PDF_TEXT_LINE_Y_TOLERANCE = 2;
+const BOLETO_TOKEN_WINDOW = 8;
+
 function extractPdfTextLines(textContent) {
   const items = (textContent.items || [])
     .map(item => ({
@@ -1933,14 +1936,14 @@ function extractPdfTextLines(textContent) {
     .filter(item => item.text);
 
   items.sort((a, b) => {
-    if (Math.abs(a.y - b.y) > 2) return b.y - a.y;
+    if (Math.abs(a.y - b.y) > PDF_TEXT_LINE_Y_TOLERANCE) return b.y - a.y;
     return a.x - b.x;
   });
 
   const lines = [];
   for (const item of items) {
     const last = lines[lines.length - 1];
-    if (!last || Math.abs(last.y - item.y) > 2) {
+    if (!last || Math.abs(last.y - item.y) > PDF_TEXT_LINE_Y_TOLERANCE) {
       lines.push({ y: item.y, items: [item] });
     } else {
       last.items.push(item);
@@ -1972,7 +1975,7 @@ function collectValidBoletosFromSegment(segment) {
 
   for (let start = 0; start < tokens.length; start++) {
     let combined = '';
-    for (let end = start; end < Math.min(tokens.length, start + 8); end++) {
+    for (let end = start; end < Math.min(tokens.length, start + BOLETO_TOKEN_WINDOW); end++) {
       combined += tokens[end];
       const size = digitsOnly(combined).length;
       if (size > 48) break;
