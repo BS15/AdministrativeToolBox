@@ -5,9 +5,11 @@ Este projeto pode rodar sem instalacao e sem terminal.
 Como abrir
 1. Abra a pasta do projeto.
 2. Clique duas vezes em app.html.
-3. O navegador abrira a interface com duas funcoes:
+3. O navegador abrira a interface com quatro funcoes:
    - SISCAC -> CSV
    - EFD-Reinf -> ZIP de XMLs
+   - Diarias -> SCD PDF
+   - Boletos PDF -> CSV
 
 Nao precisa
 - Nao precisa instalar Python.
@@ -17,6 +19,7 @@ Nao precisa
 
 Arquivos necessarios para funcionar offline
 - app.html
+- boleto-extraction.html
 - vendor/js/xlsx.full.min.js
 - vendor/js/jszip.min.js
 - vendor/js/pdf.min.js
