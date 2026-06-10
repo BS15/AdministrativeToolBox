@@ -10,6 +10,7 @@ Este repositorio roda 100% no navegador. As entradas HTML ficam na raiz do proje
 - `payments-report-extraction.html` - entrada standalone de Extração de Pagamentos
 - `efd-reinf.html` - entrada standalone de EFD-Reinf
 - `diarias.html` - entrada standalone de Diarias
+- `boleto-extraction.html` - entrada standalone de Extração de Boletos
 - `vendor/js/xlsx.full.min.js`
 - `vendor/js/jszip.min.js`
 - `vendor/js/pdf.min.js`
@@ -23,6 +24,7 @@ Este repositorio roda 100% no navegador. As entradas HTML ficam na raiz do proje
 | EFD-Reinf -> ZIP | Planilha `.xlsx` ou `.csv` | ZIP com XMLs |
 | Diarias Lote -> SCD PDF | CSV de diarias | ZIP com PDFs SCD |
 | Diaria Individual -> SCD PDF | Formulario web | PDF SCD |
+| Boletos PDF -> CSV | PDF com um boleto por pagina | CSV com codigos extraidos e status por pagina |
 
 ## Como usar
 
@@ -32,6 +34,7 @@ Este repositorio roda 100% no navegador. As entradas HTML ficam na raiz do proje
 	- `payments-report-extraction.html` para abrir somente Extração de Pagamentos.
 	- `efd-reinf.html` para abrir somente EFD-Reinf.
 	- `diarias.html` para abrir somente Diarias.
+	- `boleto-extraction.html` para abrir somente Extração de Boletos.
 3. Use a ferramenta e baixe o arquivo gerado.
 
 As entradas standalone carregam o `app.html` com a ferramenta correspondente ja selecionada em modo dedicado.
@@ -52,6 +55,7 @@ Para distribuir a aplicacao, envie:
 - `payments-report-extraction.html`
 - `efd-reinf.html`
 - `diarias.html`
+- `boleto-extraction.html`
 - pasta `vendor/js/`
 
 Nao e necessario distribuir pasta `apps/`.

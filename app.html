@@ -89,12 +89,14 @@
   <a href="./payments-report-extraction.html">Standalone: Payments Report Extraction</a>
   <a href="./efd-reinf.html">Standalone: EFD-Reinf</a>
   <a href="./diarias.html">Standalone: Diarias</a>
+  <a href="./boleto-extraction.html">Standalone: Boletos PDF</a>
 </div>
 
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('siscac', this)">SISCAC → CSV</button>
   <button class="tab-btn" onclick="switchTab('reinf', this)">EFD-Reinf → ZIP de XMLs</button>
   <button class="tab-btn" onclick="switchTab('diarias', this)">Diárias Lote → SCD PDF</button>
+  <button class="tab-btn" onclick="switchTab('boleto', this)">Boletos PDF → CSV</button>
 </div>
 
 <!-- ── PAINEL SISCAC ───────────────────────────────────────────────── -->
@@ -267,17 +269,31 @@
   </div>
 </div>
 
+<!-- ── PAINEL BOLETOS (PDF -> CSV) ─────────────────────────────────────── -->
+<div id="panel-boleto" class="panel">
+  <div class="card">
+    <h2>Extração de Linha Digitável de Boletos</h2>
+    <label>PDF com um boleto por página</label>
+    <input type="file" id="boleto-file" accept=".pdf,application/pdf" />
+    <label>O CSV gerado inclui página, status, tipo e código extraído.</label>
+    <button class="run-btn" id="boleto-btn" onclick="runBoletoExtraction()">Extrair linhas digitáveis</button>
+    <div id="boleto-status" class="status-box"></div>
+    <div id="boleto-download"></div>
+  </div>
+</div>
+
 <footer>AdministrativeToolBox · uso interno</footer>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
 // UI helpers
 // ═══════════════════════════════════════════════════════════════════════════
-const APP_NAMES = ['siscac', 'reinf', 'diarias'];
+const APP_NAMES = ['siscac', 'reinf', 'diarias', 'boleto'];
 const APP_TITLES = {
   siscac: 'Payments Report Extraction (SISCAC)',
   reinf: 'EFD-Reinf XML Generator',
   diarias: 'Diarias SCD Generator',
+  boleto: 'Boleto Digitable Line Extractor',
 };
 
 function parseHashParams() {
@@ -1789,6 +1805,230 @@ function buildReinfPrecheckReport(records, issues) {
   return lines.join('\n');
 }
 
+function calcModulo10(number) {
+  let factor = 2;
+  let sum = 0;
+  const digits = digitsOnly(number);
+
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let partial = parseInt(digits[i], 10) * factor;
+    if (partial > 9) partial = Math.floor(partial / 10) + (partial % 10);
+    sum += partial;
+    factor = factor === 2 ? 1 : 2;
+  }
+
+  return (10 - (sum % 10)) % 10;
+}
+
+function calcModulo11Bank(number) {
+  let factor = 2;
+  let sum = 0;
+  const digits = digitsOnly(number);
+
+  for (let i = digits.length - 1; i >= 0; i--) {
+    sum += parseInt(digits[i], 10) * factor;
+    factor = factor === 9 ? 2 : factor + 1;
+  }
+
+  const dv = 11 - (sum % 11);
+  return [0, 10, 11].includes(dv) ? 1 : dv;
+}
+
+function calcModulo11Arrecadacao(number) {
+  let factor = 2;
+  let sum = 0;
+  const digits = digitsOnly(number);
+
+  for (let i = digits.length - 1; i >= 0; i--) {
+    sum += parseInt(digits[i], 10) * factor;
+    factor = factor === 9 ? 2 : factor + 1;
+  }
+
+  const dv = 11 - (sum % 11);
+  return [0, 10, 11].includes(dv) ? 0 : dv;
+}
+
+function isValidBankBoletoLine(line) {
+  const digits = digitsOnly(line);
+  if (digits.length !== 47) return false;
+
+  const campo1 = digits.slice(0, 9);
+  const campo2 = digits.slice(10, 20);
+  const campo3 = digits.slice(21, 31);
+  const dv1 = parseInt(digits[9], 10);
+  const dv2 = parseInt(digits[20], 10);
+  const dv3 = parseInt(digits[31], 10);
+  const dvGeral = parseInt(digits[32], 10);
+
+  if (calcModulo10(campo1) !== dv1) return false;
+  if (calcModulo10(campo2) !== dv2) return false;
+  if (calcModulo10(campo3) !== dv3) return false;
+
+  const barcode =
+    digits.slice(0, 4) +
+    digits.slice(32, 33) +
+    digits.slice(33, 47) +
+    digits.slice(4, 9) +
+    digits.slice(10, 20) +
+    digits.slice(21, 31);
+
+  return calcModulo11Bank(barcode.slice(0, 4) + barcode.slice(5)) === dvGeral;
+}
+
+function isValidArrecadacaoLine(line) {
+  const digits = digitsOnly(line);
+  if (digits.length !== 48) return false;
+
+  const ref = digits[2];
+  const calcDv = (ref === '6' || ref === '7') ? calcModulo10 : calcModulo11Arrecadacao;
+  if (!['6', '7', '8', '9'].includes(ref)) return false;
+
+  for (let i = 0; i < 4; i++) {
+    const block = digits.slice(i * 12, (i + 1) * 12);
+    const blockData = block.slice(0, 11);
+    const blockDv = parseInt(block[11], 10);
+    if (calcDv(blockData) !== blockDv) return false;
+  }
+
+  return true;
+}
+
+function getBoletoType(digits) {
+  if (digits.length === 47) return 'boleto_bancario';
+  if (digits.length === 48) return 'arrecadacao';
+  return 'desconhecido';
+}
+
+function formatBoletoLine(digits) {
+  if (digits.length === 47) {
+    return [
+      `${digits.slice(0, 5)}.${digits.slice(5, 10)}`,
+      `${digits.slice(10, 15)}.${digits.slice(15, 21)}`,
+      `${digits.slice(21, 26)}.${digits.slice(26, 32)}`,
+      digits.slice(32, 33),
+      digits.slice(33, 47),
+    ].join(' ');
+  }
+
+  if (digits.length === 48) {
+    return digits.match(/.{1,12}/g).join(' ');
+  }
+
+  return digits;
+}
+
+function isValidBoletoLine(digits) {
+  if (digits.length === 47) return isValidBankBoletoLine(digits);
+  if (digits.length === 48) return isValidArrecadacaoLine(digits);
+  return false;
+}
+
+const PDF_TEXT_LINE_Y_TOLERANCE = 2;
+const BOLETO_TOKEN_WINDOW = 8;
+
+function extractPdfTextLines(textContent) {
+  const items = (textContent.items || [])
+    .map(item => ({
+      text: cleanText(item.str),
+      x: item.transform ? (item.transform[4] || 0) : 0,
+      y: item.transform ? (item.transform[5] || 0) : 0,
+    }))
+    .filter(item => item.text);
+
+  items.sort((a, b) => {
+    if (Math.abs(a.y - b.y) > PDF_TEXT_LINE_Y_TOLERANCE) return b.y - a.y;
+    return a.x - b.x;
+  });
+
+  const lines = [];
+  for (const item of items) {
+    const last = lines[lines.length - 1];
+    if (!last || Math.abs(last.y - item.y) > PDF_TEXT_LINE_Y_TOLERANCE) {
+      lines.push({ y: item.y, items: [item] });
+    } else {
+      last.items.push(item);
+    }
+  }
+
+  return lines
+    .map(line => line.items.sort((a, b) => a.x - b.x).map(item => item.text).join(' ').trim())
+    .filter(Boolean);
+}
+
+function collectValidBoletosFromSegment(segment) {
+  const found = [];
+  const seen = new Set();
+  const normalized = String(segment || '').replace(/[^\d.\- ]+/g, ' ');
+  const tokens = normalized.match(/[\d.\-]+/g) || [];
+
+  const pushCandidate = (candidate) => {
+    const digits = digitsOnly(candidate);
+    if (![47, 48].includes(digits.length)) return;
+    if (seen.has(digits) || !isValidBoletoLine(digits)) return;
+    seen.add(digits);
+    found.push({
+      digits,
+      formatted: formatBoletoLine(digits),
+      type: getBoletoType(digits),
+    });
+  };
+
+  for (let start = 0; start < tokens.length; start++) {
+    let combined = '';
+    for (let end = start; end < Math.min(tokens.length, start + BOLETO_TOKEN_WINDOW); end++) {
+      combined += tokens[end];
+      const size = digitsOnly(combined).length;
+      if (size > 48) break;
+      if (size === 47 || size === 48) pushCandidate(combined);
+    }
+  }
+
+  const contiguousDigits = digitsOnly(normalized);
+  for (const size of [47, 48]) {
+    for (let i = 0; i <= contiguousDigits.length - size; i++) {
+      pushCandidate(contiguousDigits.slice(i, i + size));
+    }
+  }
+
+  return found;
+}
+
+function extractBoletoFromPage(textContent) {
+  const lines = extractPdfTextLines(textContent);
+  const seen = new Set();
+  const matches = [];
+
+  const addCandidates = (segment) => {
+    for (const candidate of collectValidBoletosFromSegment(segment)) {
+      if (seen.has(candidate.digits)) continue;
+      seen.add(candidate.digits);
+      matches.push(candidate);
+    }
+  };
+
+  lines.forEach(addCandidates);
+  if (!matches.length) {
+    addCandidates((textContent.items || []).map(item => item.str || '').join(' '));
+  }
+
+  if (!matches.length) return null;
+
+  return {
+    ...matches[0],
+    totalMatches: matches.length,
+  };
+}
+
+function boletoResultsToCsv(results) {
+  const fields = ['pagina', 'status', 'tipo', 'codigo_digitavel', 'codigo_formatado', 'observacao'];
+  const rows = results.map((result) => fields.map((field) => {
+    const value = result[field] !== null && result[field] !== undefined ? String(result[field]) : '';
+    return /[,"\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  }).join(','));
+
+  return '\uFEFF' + [fields.join(','), ...rows].join('\n');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Handlers dos botões
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1847,6 +2087,89 @@ async function runSiscac() {
     a.click();
   } catch (e) {
     setStatus('siscac', 'error', 'Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runBoletoExtraction() {
+  const fileInput = document.getElementById('boleto-file');
+  const btn = document.getElementById('boleto-btn');
+  const dlDiv = document.getElementById('boleto-download');
+  dlDiv.innerHTML = '';
+
+  if (!fileInput.files.length) {
+    setStatus('boleto', 'error', 'Selecione um arquivo PDF.');
+    return;
+  }
+
+  btn.disabled = true;
+  setStatus('boleto', 'info', 'Carregando PDF...');
+
+  try {
+    const libs = await ensureLibrariesLoaded();
+    if (!libs.ok) {
+      throw new Error(`Bibliotecas ausentes: ${libs.missing.join(', ')}`);
+    }
+
+    const file = fileInput.files[0];
+    const pdfData = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    const results = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      setStatus('boleto', 'info', `Processando PDF... página ${pageNumber} de ${pdf.numPages}`);
+      const page = await pdf.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const extracted = extractBoletoFromPage(textContent);
+
+      if (extracted) {
+        results.push({
+          pagina: pageNumber,
+          status: 'OK',
+          tipo: extracted.type,
+          codigo_digitavel: extracted.digits,
+          codigo_formatado: extracted.formatted,
+          observacao: extracted.totalMatches > 1 ? 'Mais de um código válido encontrado; primeiro utilizado.' : '',
+        });
+      } else {
+        results.push({
+          pagina: pageNumber,
+          status: 'FALHA',
+          tipo: '',
+          codigo_digitavel: '',
+          codigo_formatado: '',
+          observacao: 'Nenhuma linha digitável válida encontrada na página.',
+        });
+      }
+    }
+
+    const successCount = results.filter(result => result.status === 'OK').length;
+    const failResults = results.filter(result => result.status === 'FALHA');
+    const failCount = failResults.length;
+    const csvText = boletoResultsToCsv(results);
+    const fileName = file.name.replace(/\.pdf$/i, '') + '_boletos.csv';
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+
+    const summaryLines = [
+      `✓ ${successCount} código(s) extraído(s) com sucesso.`,
+      `Falhas: ${failCount}.`,
+    ];
+    if (failCount) {
+      summaryLines.push(`Páginas sem extração: ${failResults.map(result => result.pagina).join(', ')}.`);
+    }
+
+    setStatus('boleto', successCount ? 'ok' : 'error', summaryLines.join('\n'));
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    a.className = 'download-link';
+    a.textContent = `⬇ Baixar ${fileName}`;
+    dlDiv.appendChild(a);
+    a.click();
+  } catch (e) {
+    setStatus('boleto', 'error', 'Erro: ' + e.message);
   } finally {
     btn.disabled = false;
   }
